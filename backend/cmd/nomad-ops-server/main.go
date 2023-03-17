@@ -190,6 +190,7 @@ func main() {
 			log.NewSimpleLogger(trace, "RepoWatcher"),
 			application.RepoWatcherConfig{
 				Interval: env.GetDurationEnv(ctx, logger, "NOMAD_OPS_POLLING_INTERVAL", 60*time.Second),
+				AppName:  env.GetStringEnv(ctx, logger, "APP_NAME", "nomad-ops"),
 			},
 			srcStore,
 			dsw,
@@ -200,7 +201,7 @@ func main() {
 		}
 
 		err = nomadAPI.SubscribeJobChanges(ctx, func(jobName string) {
-			err := watcher.UpdateSourceByID(ctx, jobName, application.UpdateSourceOptions{})
+			err := watcher.SyncSourceByID(ctx, jobName, application.SyncSourceOptions{})
 			if err == errors.ErrNotFound {
 				// not handled by us --- ignore
 				return
@@ -293,7 +294,7 @@ func main() {
 				}
 
 				logger.LogInfo(c.Request().Context(), "Syncing source %s...", id)
-				err := watcher.UpdateSourceByID(c.Request().Context(), id, application.UpdateSourceOptions{
+				err := watcher.SyncSourceByID(c.Request().Context(), id, application.SyncSourceOptions{
 					ForceRestart: false,
 				})
 

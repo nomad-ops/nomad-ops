@@ -13,6 +13,7 @@ export const FormInputText = ({ name, control, label, autoFocus, type, required 
                 formState,
             }) => (
                 <TextField
+                    name={name}
                     helperText={error ? error.message : null}
                     autoFocus={autoFocus}
                     required={required}

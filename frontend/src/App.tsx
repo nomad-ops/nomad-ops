@@ -20,7 +20,7 @@ function Copyright(props: any) {
       <Link color="inherit" href="/">
         Nomad Ops
       </Link>{' '}
-      {new Date().getFullYear()}
+      {"2022 - " + new Date().getFullYear()}
       {'.'}
     </Typography>
   );

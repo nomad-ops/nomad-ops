@@ -4,7 +4,7 @@ import { Subscription } from 'rxjs';
 import { Source } from '../domain/Source';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RealTimeAccess from '../services/RealTimeAccess';
-import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip } from '@mui/material';
+import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton } from '@mui/material';
 import { orange, red, teal } from '@mui/material/colors';
 import CheckIcon from '@mui/icons-material/Check';
 import ErrorIcon from '@mui/icons-material/Error';
@@ -53,7 +53,7 @@ export default function Sources() {
         setOpen(true);
     };
 
-    const handleClose = (ev?: any | undefined, reason?: string | undefined) => {
+    const handleClose = (_ev?: any | undefined, reason?: string | undefined) => {
         if (reason && reason === "backdropClick")
             return;
         setOpen(false);
@@ -91,6 +91,10 @@ export default function Sources() {
         var sub: Subscription | undefined = undefined;
         RealTimeAccess.GetStore<Source>("sources").then((s) => {
             sub = s.subscribe((sources) => {
+                if (sources === undefined) {
+                    setSources(undefined);
+                    return;
+                }
                 var objArray: Source[] = [];
                 for (const key in sources) {
                     if (Object.prototype.hasOwnProperty.call(sources, key)) {
@@ -115,6 +119,10 @@ export default function Sources() {
         var sub: Subscription | undefined = undefined;
         RealTimeAccess.GetStore<Key>("keys").then((s) => {
             sub = s.subscribe((keys) => {
+                if (keys === undefined) {
+                    setKeys(undefined);
+                    return;
+                }
                 var objArray: Key[] = [];
                 for (const key in keys) {
                     if (Object.prototype.hasOwnProperty.call(keys, key)) {
@@ -452,6 +460,22 @@ export default function Sources() {
                     </Card>
                 </Grid>
             }) : undefined}
+            {sources && sources.length === 0 ? <Container sx={{ textAlign: "center" }}>
+                <Typography>
+                    No sources configured
+                </Typography>
+            </Container> : undefined}
+            {sources === undefined ? <React.Fragment>
+                <Grid item xs={12} md={6} lg={4}>
+                    <Skeleton variant="rectangular" height={300} />
+                </Grid>
+                <Grid item xs={12} md={6} lg={4}>
+                    <Skeleton variant="rectangular" height={300} />
+                </Grid>
+                <Grid item xs={12} md={6} lg={4}>
+                    <Skeleton variant="rectangular" height={300} />
+                </Grid>
+            </React.Fragment> : undefined}
         </Grid>
         <Fab color="primary" aria-label="add" sx={{
             position: "fixed",

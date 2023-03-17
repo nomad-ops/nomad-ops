@@ -11,11 +11,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
-import { Button, CardActions, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Fab, Tooltip } from '@mui/material';
+import { Button, CardActions, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Fab, Skeleton, Tooltip } from '@mui/material';
 import { teal } from '@mui/material/colors';
 import { Subscription } from 'rxjs';
-import { FormInputDropdown } from '../components/form-components/FormInputDropdown';
-import { FormInputMultiCheckbox } from '../components/form-components/FormInputMultiCheckbox';
 import { FormInputText } from '../components/form-components/FormInputText';
 import { useForm } from 'react-hook-form';
 import KeyService from '../services/KeyService';
@@ -39,19 +37,16 @@ export default function Keys() {
         setOpen(true);
     };
 
-    const handleClose = (ev?: any | undefined, reason?: string | undefined) => {
+    const handleClose = (_ev?: any | undefined, reason?: string | undefined) => {
         if (reason && reason === "backdropClick")
             return;
         setOpen(false);
     };
 
     const methods = useForm<IKeyFormInput>({ defaultValues: defaultKeyValues });
-    const { handleSubmit, reset, control, setValue } = methods;
+    const { handleSubmit, reset, control } = methods;
     const onSubmit = (data: IKeyFormInput) => {
         // TODO validate
-
-        console.log(data);
-
 
         KeyService.createKey({
             name: data.name,
@@ -70,6 +65,10 @@ export default function Keys() {
         var sub: Subscription | undefined = undefined;
         RealTimeAccess.GetStore<Key>("keys").then((s) => {
             sub = s.subscribe((keys) => {
+                if (keys === undefined) {
+                    setKeys(undefined);
+                    return;
+                }
                 var objArray: Key[] = [];
                 for (const key in keys) {
                     if (Object.prototype.hasOwnProperty.call(keys, key)) {
@@ -127,6 +126,25 @@ export default function Keys() {
                     </Card>
                 </Grid>
             }) : undefined}
+            {keys && keys.length === 0 ? <Container sx={{ textAlign: "center" }}>
+                <Typography>
+                    No keys configured
+                </Typography>
+            </Container> : undefined}
+            {keys === undefined ? <React.Fragment>
+                <Grid item xs={12} md={4} lg={3}>
+                    <Skeleton variant="rectangular" height={150} />
+                </Grid>
+                <Grid item xs={12} md={4} lg={3}>
+                    <Skeleton variant="rectangular" height={150} />
+                </Grid>
+                <Grid item xs={12} md={4} lg={3}>
+                    <Skeleton variant="rectangular" height={150} />
+                </Grid>
+                <Grid item xs={12} md={4} lg={3}>
+                    <Skeleton variant="rectangular" height={150} />
+                </Grid>
+            </React.Fragment> : undefined}
         </Grid>
         <Fab color="primary" aria-label="add" sx={{
             position: "fixed",

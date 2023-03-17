@@ -25,10 +25,12 @@ type WatchInfo struct {
 	cancel     context.CancelFunc
 	Source     *domain.Source
 	Reconciler ReconcilerFunc
-	updateFunc func(context.Context, UpdateSourceOptions) error
-	updateCh   chan UpdateSourceOptions
+	syncFunc   func(context.Context, SyncSourceOptions) error
+	syncCh     chan SyncSourceOptions
 	pauseFunc  func(context.Context, PauseOptions) error
 	pauseCh    chan PauseOptions
+	updateFunc func(context.Context, *domain.Source) error
+	updateCh   chan *domain.Source
 }
 
 type RepoWatcher struct {
@@ -74,19 +76,19 @@ type PauseOptions struct {
 	Pause bool
 }
 
-type UpdateSourceOptions struct {
+type SyncSourceOptions struct {
 	ForceRestart bool
 }
 
-func (w *RepoWatcher) UpdateSourceByID(ctx context.Context, id string, opts UpdateSourceOptions) error {
+func (w *RepoWatcher) SyncSourceByID(ctx context.Context, id string, opts SyncSourceOptions) error {
 	w.lock.Lock()
 	wi, ok := w.watchList[id]
 	if !ok {
 		return errors.ErrNotFound
 	}
 	w.lock.Unlock()
-	w.logger.LogInfo(ctx, "Updating repo %s on branch %s", wi.Source.URL, wi.Source.Branch)
-	err := wi.updateFunc(ctx, opts)
+	w.logger.LogInfo(ctx, "Syncing repo %s on branch %s", wi.Source.URL, wi.Source.Branch)
+	err := wi.syncFunc(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -108,8 +110,8 @@ func (w *RepoWatcher) PauseSourceByID(ctx context.Context, id string, opts Pause
 	return nil
 }
 
-func (w *RepoWatcher) UpdateSource(ctx context.Context, repo, branch string, opts UpdateSourceOptions) error {
-	w.logger.LogInfo(ctx, "Updating repo %s on branch %s", repo, branch)
+func (w *RepoWatcher) SyncSource(ctx context.Context, repo, branch string, opts SyncSourceOptions) error {
+	w.logger.LogInfo(ctx, "Syncing repo %s on branch %s", repo, branch)
 	w.lock.Lock()
 	var wis []*WatchInfo
 	for _, iwi := range w.watchList {
@@ -136,7 +138,7 @@ func (w *RepoWatcher) UpdateSource(ctx context.Context, repo, branch string, opt
 		return errors.ErrNotFound
 	}
 	for _, wi := range wis {
-		err := wi.updateFunc(ctx, opts)
+		err := wi.syncFunc(ctx, opts)
 		if err != nil {
 			return err
 		}
@@ -159,10 +161,10 @@ func (w *RepoWatcher) applyOverrides(ctx context.Context, src *domain.Source, de
 	return nil
 }
 
-func (w *RepoWatcher) WatchSource(ctx context.Context, src *domain.Source, cb ReconcilerFunc) error {
+func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, cb ReconcilerFunc) error {
 	w.lock.Lock()
 	defer w.lock.Unlock()
-	wi, ok := w.watchList[src.ID]
+	wi, ok := w.watchList[origSrc.ID]
 	if ok {
 		// already watching
 		return nil
@@ -172,11 +174,11 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, src *domain.Source, cb Re
 		ctx:        workerCtx,
 		cancel:     cancel,
 		Reconciler: cb,
-		Source:     src,
-		updateCh:   make(chan UpdateSourceOptions),
-		updateFunc: func(ctx context.Context, opts UpdateSourceOptions) error {
+		Source:     origSrc,
+		syncCh:     make(chan SyncSourceOptions),
+		syncFunc: func(ctx context.Context, opts SyncSourceOptions) error {
 			select {
-			case wi.updateCh <- opts:
+			case wi.syncCh <- opts:
 				return nil
 			case <-ctx.Done():
 				return ctx.Err()
@@ -186,6 +188,15 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, src *domain.Source, cb Re
 		pauseFunc: func(ctx context.Context, opts PauseOptions) error {
 			select {
 			case wi.pauseCh <- opts:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+		updateCh: make(chan *domain.Source),
+		updateFunc: func(ctx context.Context, src *domain.Source) error {
+			select {
+			case wi.updateCh <- src:
 				return nil
 			case <-ctx.Done():
 				return ctx.Err()
@@ -201,14 +212,16 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, src *domain.Source, cb Re
 		w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 	}
 
-	w.watchList[src.ID] = wi
+	w.watchList[origSrc.ID] = wi
 
 	go func(wi *WatchInfo) {
-		w.logger.LogInfo(wi.ctx, "Starting watch on %s - %s", src.URL, src.Path)
-		defer w.logger.LogInfo(wi.ctx, "Stopped watch on %s - %s", src.URL, src.Path)
+		w.logger.LogInfo(wi.ctx, "Starting watch on %s %s - %s", wi.Source.Name, wi.Source.URL, wi.Source.Path)
+		defer func() {
+			w.logger.LogInfo(wi.ctx, "Stopped watch on %s %s - %s", wi.Source.Name, wi.Source.URL, wi.Source.Path)
+		}()
 		defer func() {
 			if r := recover(); r != nil {
-				w.logger.LogError(wi.ctx, "Recovered worker %s - %s:%v - %s", src.URL, src.Path, r, string(debug.Stack()))
+				w.logger.LogError(wi.ctx, "Recovered worker %s - %s:%v - %s", wi.Source.URL, wi.Source.Path, r, string(debug.Stack()))
 			}
 		}()
 
@@ -233,16 +246,21 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, src *domain.Source, cb Re
 			if !firstRun {
 				metrics.GetOrCreateCounter("nomad_ops_reconciliations_counter" +
 					fmt.Sprintf(`{app="%s",repo_url="%s",repo_branch="%s",nomad_namespace="%s",nomad_dc="%s",key_id="%s",repo_path="%s",has_error="%v"}`,
-						w.cfg.AppName, src.URL, src.Branch, src.Namespace, src.DataCenter, src.DeployKeyID, src.Path, hasError)).Inc()
+						w.cfg.AppName, wi.Source.URL, wi.Source.Branch,
+						wi.Source.Namespace, wi.Source.DataCenter,
+						wi.Source.DeployKeyID, wi.Source.Path, hasError)).Inc()
 			}
 			firstRun = false
 			restart := false
 			select {
 			case <-time.After(waitTime):
-			case opts := <-wi.updateCh:
+			case opts := <-wi.syncCh:
 				restart = opts.ForceRestart
 			case opts := <-wi.pauseCh:
 				paused = opts.Pause
+			case src := <-wi.updateCh:
+				w.logger.LogInfo(wi.ctx, "Updating watch on %s %s - %s", wi.Source.Name, wi.Source.URL, wi.Source.Path)
+				wi.Source = src
 			case <-wi.ctx.Done():
 				return
 			}
@@ -363,7 +381,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, src *domain.Source, cb Re
 				continue
 			}
 
-			status, changeInfo, err := wi.Reconciler(wi.ctx, src, desiredState, restart, paused)
+			status, changeInfo, err := wi.Reconciler(wi.ctx, wi.Source, desiredState, restart, paused)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not Reconcile: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
 				if !hasError {
@@ -476,7 +494,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, src *domain.Source, cb Re
 
 			status.DetermineSyncStatus()
 
-			err = w.sourceStatusPatcher.SetSourceStatus(src.ID, status)
+			err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, status)
 			if err != nil {
 				w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 			}

@@ -11,9 +11,6 @@ import SignIn from './pages/SignIn';
 import { AuthProvider } from './services/auth/useAuth';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { SnackbarProvider } from 'notistack';
-import RealTimeAccess from './services/RealTimeAccess';
-import { Key } from './domain/Key';
-import { Source } from './domain/Source';
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
