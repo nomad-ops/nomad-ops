@@ -41,10 +41,14 @@ func CreateClient(ctx context.Context,
 	logger log.Logger,
 	cfg ClientConfig) (*Client, error) {
 
-	client, err := api.NewClient(&api.Config{
+	defCfg := api.DefaultConfig()
+
+	if cfg.NomadToken != "" {
 		// Use default client config from ENV, optionally a custom token
-		SecretID: cfg.NomadToken,
-	})
+		defCfg.SecretID = cfg.NomadToken
+	}
+
+	client, err := api.NewClient(defCfg)
 
 	if err != nil {
 		return nil, err
