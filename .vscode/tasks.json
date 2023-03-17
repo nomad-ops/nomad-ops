@@ -1,0 +1,55 @@
+{
+  "version": "2.0.0",
+  "cwd": "${workspaceFolder}",
+  "tasks": [
+    {
+      "label": "build client",
+      "command": "npm",
+      "args": [
+        "run",
+        "build"
+      ],
+      "group": "build",
+      "type": "shell",
+      "options": {
+        "env": {
+          "BUILD_PATH": "../backend/cmd/nomad-ops-server/wwwroot"
+        },
+        "cwd": "${workspaceFolder}/frontend"
+      }
+    },
+    {
+      "label": "run server",
+      "command": "go",
+      "args": [
+        "run",
+        "backend/cmd/nomad-ops-server/main.go",
+        "serve"
+      ],
+      "group": "build",
+      "type": "shell",
+      "dependsOn": [
+        "build client"
+      ],
+      "options": {
+        "env": {
+        }
+      }
+    },
+    {
+      "label": "run client",
+      "command": "npm",
+      "args": [
+        "run",
+        "start"
+      ],
+      "group": "build",
+      "type": "shell",
+      "options": {
+        "env": {
+        },
+        "cwd": "${workspaceFolder}/frontend"
+      }
+    }
+  ]
+}

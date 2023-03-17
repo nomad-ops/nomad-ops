@@ -1,0 +1,17 @@
+.git/
+.github/
+google-cloud/
+kubernetes/
+target/
+.editorconfig
+.env
+.envrc
+.gitignore
+.pre-commit-config.yaml
+atlantis.yaml
+gcpd.yaml
+justfile
+README.md
+frontend/node_modules/
+target
+skaffold*
