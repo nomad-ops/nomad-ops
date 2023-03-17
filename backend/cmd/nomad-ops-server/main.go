@@ -45,7 +45,7 @@ func main() {
 	logger.LogInfo(ctx, "Start")
 
 	app.OnRecordBeforeCreateRequest().Add(func(e *core.RecordCreateEvent) error {
-		logger.LogInfo(ctx, "source:%v", e.Record)
+
 		if e.Collection.Name == "sources" {
 			e.Record.Set("status", &domain.SourceStatus{
 				Status:  domain.SourceStatusStatusInit,
@@ -226,19 +226,6 @@ func main() {
 			logger.LogError(ctx, "Could not CreateReconciliationManager:%v", err)
 			os.Exit(-2)
 		}
-
-		app.OnModelBeforeCreate().Add(func(e *core.ModelEvent) error {
-			return nil
-		})
-		app.OnRecordBeforeCreateRequest().Add(func(e *core.RecordCreateEvent) error {
-			if e.Collection.Name == "sources" {
-				e.Record.Set("status", &domain.SourceStatus{
-					Status:  domain.SourceStatusStatusInit,
-					Message: "Pending...",
-				})
-			}
-			return nil
-		})
 
 		app.OnRecordAfterCreateRequest().Add(func(e *core.RecordCreateEvent) error {
 			if e.Collection.Name == "sources" {

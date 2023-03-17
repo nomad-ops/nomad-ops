@@ -61,16 +61,13 @@ func (g *GitProvider) FetchDesiredState(ctx context.Context, src *domain.Source)
 	g.repoLock.Lock()
 	defer g.repoLock.Unlock()
 	var auth transport.AuthMethod
-	if src.DeployKeyName != "" {
+	if src.DeployKeyID != "" {
 
-		key, err := g.keyRepo.GetKey(ctx, src.DeployKeyName)
+		key, err := g.keyRepo.GetKey(ctx, src.DeployKeyID)
 		if err != nil {
 			g.logger.LogError(ctx, "Could not GetKey:%v", err)
 			return nil, err
 		}
-
-		// TODO remove
-		g.logger.LogInfo(ctx, "Key:%s", key.Value)
 
 		publicKeys, err := ssh.NewPublicKeys("git", []byte(key.Value), "")
 		if err != nil {

@@ -232,8 +232,8 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, src *domain.Source, cb Re
 		for {
 			if !firstRun {
 				metrics.GetOrCreateCounter("nomad_ops_reconciliations_counter" +
-					fmt.Sprintf(`{app="%s",repo_url="%s",repo_branch="%s",nomad_namespace="%s",nomad_dc="%s",key_name="%s",repo_path="%s",has_error="%v"}`,
-						w.cfg.AppName, src.URL, src.Branch, src.Namespace, src.DataCenter, src.DeployKeyName, src.Path, hasError)).Inc()
+					fmt.Sprintf(`{app="%s",repo_url="%s",repo_branch="%s",nomad_namespace="%s",nomad_dc="%s",key_id="%s",repo_path="%s",has_error="%v"}`,
+						w.cfg.AppName, src.URL, src.Branch, src.Namespace, src.DataCenter, src.DeployKeyID, src.Path, hasError)).Inc()
 			}
 			firstRun = false
 			restart := false

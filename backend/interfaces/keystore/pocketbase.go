@@ -33,8 +33,8 @@ func CreatePocketBaseStore(ctx context.Context,
 	return t, nil
 }
 
-func (s *PocketBaseStore) GetKey(ctx context.Context, name string) (*domain.DeployKey, error) {
-	record, err := s.cfg.App.Dao().FindFirstRecordByData("keys", "name", name)
+func (s *PocketBaseStore) GetKey(ctx context.Context, id string) (*domain.DeployKey, error) {
+	record, err := s.cfg.App.Dao().FindRecordById("keys", id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.ErrNotFound

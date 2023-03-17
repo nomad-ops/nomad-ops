@@ -34,8 +34,8 @@ type Source struct {
 	// if set, will override whatever is written in the job file. Use comma to provide multiple.
 	DataCenter string `json:"dataCenter,omitempty"`
 
-	// deployKeyName to use
-	DeployKeyName string `json:"deployKeyName,omitempty"`
+	// deployKeyID to use
+	DeployKeyID string `json:"deployKeyID,omitempty"`
 
 	// if true every commit forces an job update
 	Force bool `json:"force,omitempty"`
@@ -143,6 +143,7 @@ func initSourceCollection(app core.App,
 			Max: types.Pointer(100),
 		},
 	})
+	max := 1
 	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "deployKey",
 		Type:     schema.FieldTypeRelation,
@@ -150,6 +151,7 @@ func initSourceCollection(app core.App,
 		Unique:   false,
 		Options: &schema.RelationOptions{
 			CollectionId: keysCollection.Id,
+			MaxSelect:    &max,
 		},
 	})
 	addOrUpdateField(form, &schema.SchemaField{
@@ -183,8 +185,7 @@ func SourceFromRecord(record *models.Record, withStatus bool) *Source {
 	} else {
 		status = nil
 	}
-
-	return &Source{
+	src := &Source{
 		ID:              record.Id,
 		Name:            record.GetString("name"),
 		URL:             record.GetString("url"),
@@ -193,9 +194,11 @@ func SourceFromRecord(record *models.Record, withStatus bool) *Source {
 		DataCenter:      record.GetString("dataCenter"),
 		Region:          record.GetString("region"),
 		Namespace:       record.GetString("namespace"),
-		DeployKeyName:   record.GetString("deployKeyName"),
+		DeployKeyID:     record.GetString("deployKey"),
 		CreateNamespace: record.GetBool("createNamespace"),
 		Force:           record.GetBool("force"),
 		Status:          status,
 	}
+
+	return src
 }

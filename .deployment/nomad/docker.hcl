@@ -72,7 +72,7 @@ job "nomad-ops" {
 
       # Configuration is specific to each driver.
       config {
-        image = "ghcr.io/nomad-ops/nomad-ops:main"
+        image = "ghcr.io/nomad-ops/nomad-ops:latest"
         args = [
           "serve",
           "--http", "0.0.0.0:${NOMAD_PORT_http}",

@@ -42,7 +42,7 @@ type ListKeysOptions struct {
 }
 
 type KeyRepo interface {
-	GetKey(ctx context.Context, name string) (*domain.DeployKey, error)
+	GetKey(ctx context.Context, id string) (*domain.DeployKey, error)
 }
 
 type EventRepo interface {

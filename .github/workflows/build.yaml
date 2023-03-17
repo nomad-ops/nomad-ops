@@ -47,5 +47,5 @@ jobs:
           # include ,linux/arm64 for arm builds but github is soooo slow
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: latest
           labels: ${{ steps.meta.outputs.labels }}
