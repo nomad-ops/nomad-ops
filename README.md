@@ -28,3 +28,10 @@ nomad acl policy apply \
 > Before that you need to supply a NOMAD_TOKEN yourself
 
 > Thanks to https://github.com/pocketbase/pocketbase for providing a solid base : ) !
+
+## Publishing docs
+
+1. `docker run --rm -it -p 8000:8000 -v ${PWD}:/docs -v ~/.ssh:/root/.ssh --entrypoint /bin/sh --platform linux/amd64 squidfunk/mkdocs-material`
+2. `apk add -U git openssh`
+3. `git config --global url."git@github.com:".insteadOf "https://github.com/"`
+4. `mkdocs gh-deploy`
