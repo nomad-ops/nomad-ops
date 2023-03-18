@@ -1,8 +1,9 @@
 # nomad-ops
 
-Let's build a simple operator for nomad which reconciles the running jobs in comparison to git repos
+A simple operator for nomad which reconciles the running jobs in comparison to git repos
 
-> Still work in progress, but it should do what it is supposed to :)
+> Still work in progress, but it should do what it is supposed to :)  
+> See [http://nomad-ops.org](http://nomad-ops.org) for more information
 
 ## Getting started with docker
 

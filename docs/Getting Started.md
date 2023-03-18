@@ -14,6 +14,10 @@ For a simple deployment, consider restricting the deployment to a specific node.
 
 > TODO
 
+## Security
+
+Deploy keys are saved in plain text. Please make sure that the application is only accessible by authorized personnel. This includes setting up TLS, users and a hardened runtime-environment.
+
 ## Workflow
 
 Nomad Ops pulls the `desired state` from a git-repository on a regular basis. Additionally, certain events trigger a re-evaluation of the state as well.
