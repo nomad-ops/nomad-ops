@@ -12,7 +12,14 @@ For a simple deployment, consider restricting the deployment to a specific node.
 
 ### Configuration 
 
-> TODO
+| ENVIRONMENT Variable   | Default             | Description                                                    |
+| ---------------------- | ------------------- | -------------------------------------------------------------- |
+| DEFAULT_ADMIN_EMAIL    | admin@nomad-ops.org | On first startup an admin user is created with this email      |
+| DEFAULT_ADMIN_PASSWORD | simple-nomad-ops    | On first startup an admin user is created with this password   |
+| NOMAD_ADDR             | ''                  | Nomad addr                                                     |
+| NOMAD_TOKEN            | ''                  | Nomad token to access the Nomad API                            |
+| NOMAD_TOKEN_FILE       | ''                  | If set will ignore NOMAD_TOKEN and read from this file instead |
+| TRACE                  | FALSE               | If set to `TRUE` enables detailed logging                      |
 
 ## Security
 

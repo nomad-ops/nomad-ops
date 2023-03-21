@@ -1,4 +1,4 @@
-import { FormControl, FormLabel, FormControlLabel, Checkbox } from "@mui/material";
+import { FormControl, FormLabel, FormControlLabel, Checkbox, List, ListItem } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { Controller } from "react-hook-form";
 import { FormInputProps } from "./FormInputProps";
@@ -10,7 +10,11 @@ export const FormInputMultiCheckbox: React.FC<FormInputProps> = ({
     label,
     options
 }) => {
-    const [selectedItems, setSelectedItems] = useState<any>([]);
+    const [selectedItems, setSelectedItems] = useState<any>(options?.filter((opt) => {
+        return opt.selected === true;
+    }).map((opt) => {
+        return opt.value;
+    }));
 
     const handleSelect = (value: any) => {
         const isPresent = selectedItems.indexOf(value);
@@ -30,30 +34,31 @@ export const FormInputMultiCheckbox: React.FC<FormInputProps> = ({
         <FormControl size={"small"} variant={"outlined"}>
             <FormLabel component="legend">{label}</FormLabel>
 
-            <div>
+            <List dense={true} disablePadding={true}>
                 {options?.map((option: any) => {
                     return (
-                        <FormControlLabel
-                            control={
-                                <Controller
-                                    name={name}
-                                    render={() => {
-                                        return (
-                                            <Checkbox
-                                                checked={selectedItems.includes(option.value)}
-                                                onChange={() => handleSelect(option.value)}
-                                            />
-                                        );
-                                    }}
-                                    control={control}
-                                />
-                            }
-                            label={option.label}
-                            key={option.value}
-                        />
+                        <ListItem key={option.value}>
+                            <FormControlLabel
+                                control={
+                                    <Controller
+                                        name={name}
+                                        render={() => {
+                                            return (
+                                                <Checkbox
+                                                    checked={selectedItems.includes(option.value)}
+                                                    onChange={() => handleSelect(option.value)}
+                                                />
+                                            );
+                                        }}
+                                        control={control}
+                                    />
+                                }
+                                label={option.label}
+                            />
+                        </ListItem>
                     );
                 })}
-            </div>
+            </List>
         </FormControl>
     );
 };

@@ -28,9 +28,6 @@
       ],
       "group": "build",
       "type": "shell",
-      "dependsOn": [
-        "build client"
-      ],
       "options": {
         "env": {
         }

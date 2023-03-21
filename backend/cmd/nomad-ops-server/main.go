@@ -151,9 +151,7 @@ func main() {
 		nomadAPI, err := nomadcluster.CreateClient(ctx,
 			log.NewSimpleLogger(trace, "NomadClient"),
 			nomadcluster.ClientConfig{
-				NomadToken:       nomadToken,
-				DefaultNamespace: env.GetStringEnv(ctx, logger, "NOMAD_DEFAULT_NAMESPACE", "nomad-ops"),
-				DefaultRegion:    env.GetStringEnv(ctx, logger, "NOMAD_DEFAULT_REGION", ""),
+				NomadToken: nomadToken,
 			})
 		if err != nil {
 			logger.LogError(ctx, "Could not CreateNomadClient:%v", err)
@@ -249,9 +247,14 @@ func main() {
 		})
 
 		app.OnRecordAfterUpdateRequest().Add(func(e *core.RecordUpdateEvent) error {
-			// if e.Collection.Name == "sources" {
-			// Update watch
-			// }
+			if e.Collection.Name == "sources" {
+				// Update watch
+				err := watcher.UpdateSource(e.HttpContext.Request().Context(), domain.SourceFromRecord(e.Record, true))
+				if err != nil {
+					logger.LogError(ctx, "Could not UpdateSource:%v", err)
+					return err
+				}
+			}
 
 			return nil
 		})

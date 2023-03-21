@@ -25,9 +25,7 @@ var (
 )
 
 type ClientConfig struct {
-	NomadToken       string
-	DefaultNamespace string
-	DefaultRegion    string
+	NomadToken string
 }
 
 type Client struct {
@@ -175,10 +173,7 @@ func (c *Client) ParseJob(ctx context.Context, j string) (*application.JobInfo, 
 
 func (c *Client) getQueryOptsCtx(ctx context.Context, src *domain.Source) *api.QueryOptions {
 
-	opts := api.QueryOptions{
-		Region:    c.cfg.DefaultRegion,
-		Namespace: c.cfg.DefaultNamespace,
-	}
+	opts := api.QueryOptions{}
 	if src.Namespace != "" {
 		opts.Namespace = src.Namespace
 	}
@@ -191,10 +186,7 @@ func (c *Client) getQueryOptsCtx(ctx context.Context, src *domain.Source) *api.Q
 
 func (c *Client) getWriteOptions(ctx context.Context, src *domain.Source) *api.WriteOptions {
 
-	opts := api.WriteOptions{
-		Region:    c.cfg.DefaultRegion,
-		Namespace: c.cfg.DefaultNamespace,
-	}
+	opts := api.WriteOptions{}
 	if src.Namespace != "" {
 		opts.Namespace = src.Namespace
 	}

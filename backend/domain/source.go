@@ -60,7 +60,8 @@ type Source struct {
 }
 
 func initSourceCollection(app core.App,
-	keysCollection *models.Collection) (*models.Collection, error) {
+	keysCollection *models.Collection,
+	teamsCollection *models.Collection) (*models.Collection, error) {
 
 	collection, err := app.Dao().FindCollectionByNameOrId("sources")
 
@@ -74,10 +75,11 @@ func initSourceCollection(app core.App,
 	form := forms.NewCollectionUpsert(app, collection)
 	form.Name = "sources"
 	form.Type = models.CollectionTypeBase
-	form.ListRule = types.Pointer("@request.auth.id != ''")
+	//form.ListRule = types.Pointer("@request.auth.id != ''")
+	form.ListRule = types.Pointer("")
 	form.ViewRule = types.Pointer("@request.auth.id != ''")
 	form.CreateRule = types.Pointer("@request.auth.id != ''")
-	form.UpdateRule = nil
+	form.UpdateRule = types.Pointer("@request.auth.id != ''")
 	form.DeleteRule = types.Pointer("@request.auth.id != ''")
 
 	addOrUpdateField(form, &schema.SchemaField{
@@ -164,6 +166,15 @@ func initSourceCollection(app core.App,
 		Type:     schema.FieldTypeJson,
 		Required: false,
 		Options:  &schema.JsonOptions{},
+	})
+	addOrUpdateField(form, &schema.SchemaField{
+		Name:     "teams",
+		Type:     schema.FieldTypeRelation,
+		Required: false,
+		Unique:   false,
+		Options: &schema.RelationOptions{
+			CollectionId: teamsCollection.Id,
+		},
 	})
 
 	// validate and submit (internally it calls app.Dao().SaveCollection(collection) in a transaction)
