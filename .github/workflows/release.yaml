@@ -2,6 +2,8 @@ name: release
 
 on:
   release:
+    types:
+      - 'published'
 
 env:
   REGISTRY: ghcr.io
