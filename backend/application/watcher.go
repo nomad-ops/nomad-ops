@@ -146,6 +146,21 @@ func (w *RepoWatcher) SyncSource(ctx context.Context, repo, branch string, opts 
 	return nil
 }
 
+func (w *RepoWatcher) UpdateSource(ctx context.Context, src *domain.Source) error {
+	w.logger.LogInfo(ctx, "Updating source %s", src.Name)
+	w.lock.Lock()
+	wi, ok := w.watchList[src.ID]
+	if !ok {
+		return errors.ErrNotFound
+	}
+	w.lock.Unlock()
+	err := wi.updateFunc(ctx, src)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (w *RepoWatcher) applyOverrides(ctx context.Context, src *domain.Source, desiredState *DesiredState) error {
 
 	for _, v := range desiredState.Jobs {

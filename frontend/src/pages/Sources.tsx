@@ -4,12 +4,13 @@ import { Subscription } from 'rxjs';
 import { Source } from '../domain/Source';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RealTimeAccess from '../services/RealTimeAccess';
-import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton } from '@mui/material';
+import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Chip, Paper, Stack, TextField } from '@mui/material';
 import { orange, red, teal } from '@mui/material/colors';
 import CheckIcon from '@mui/icons-material/Check';
 import ErrorIcon from '@mui/icons-material/Error';
 import LoopIcon from '@mui/icons-material/Loop';
 import AddIcon from '@mui/icons-material/Add';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import SyncIcon from '@mui/icons-material/Sync';
 import NotStartedIcon from '@mui/icons-material/NotStarted';
 import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
@@ -22,6 +23,9 @@ import { Key } from '../domain/Key';
 import { FormInputText } from '../components/form-components/FormInputText';
 import { FormInputDropdown } from '../components/form-components/FormInputDropdown';
 import { FormInputMultiCheckbox } from '../components/form-components/FormInputMultiCheckbox';
+import { Team } from '../domain/Team';
+import TeamFilter from '../components/TeamFilter';
+import { useAuth } from '../services/auth/useAuth';
 
 interface IFormInput {
     name: string;
@@ -31,6 +35,7 @@ interface IFormInput {
     dataCenter: string;
     namespace: string;
     force: string[];
+    teams?: string[];
     region: string;
     deployKey: string;
 }
@@ -46,7 +51,18 @@ const defaultValues = {
     deployKey: "__empty__"
 };
 
+interface IEditTeamsFormInput {
+    id: string;
+    teams?: string[];
+}
+
+const defaultEditTeamsValues = {
+    teams: []
+};
+
 export default function Sources() {
+    const auth = useAuth();
+
     const [open, setOpen] = React.useState(false);
 
     const handleClickOpen = () => {
@@ -74,13 +90,55 @@ export default function Sources() {
             dataCenter: data.dataCenter,
             force: (data.force && data.force.length > 0 && data.force[0] === "true"),
             namespace: data.namespace,
+            teams: data.teams,
             region: data.region,
+
             deployKey: data.deployKey && data.deployKey !== "__empty__" ? data.deployKey : undefined
         })
             .then(() => {
                 NotificationService.notifySuccess(`Watching ${data.url}...`);
                 setOpen(false);
                 reset();
+            })
+            .catch((err) => {
+                console.log(err);
+            });
+
+    };
+
+    const [openEditTeams, setOpenEditTeams] = React.useState<IEditTeamsFormInput | undefined>(undefined);
+
+    const handleClickOpenEditTeams = (data: IEditTeamsFormInput) => {
+        setOpenEditTeams(data);
+    };
+
+    const handleCloseEditTeams = (_ev?: any | undefined, reason?: string | undefined) => {
+        if (reason && reason === "backdropClick")
+            return;
+        setOpenEditTeams(undefined);
+    };
+
+    const methodsEditTeams = useForm<IEditTeamsFormInput>({ defaultValues: defaultEditTeamsValues });
+    const handleSubmitEditTeams = methodsEditTeams.handleSubmit;
+    const resetEditTeams = methodsEditTeams.reset;
+    const controlEditTeams = methodsEditTeams.control;
+    const setValueEditTeams = methodsEditTeams.setValue;
+    const onSubmitEditTeams = (data: IEditTeamsFormInput) => {
+        // TODO validate
+
+        console.log(data);
+        if (openEditTeams === undefined) {
+            return;
+        }
+
+        SourceService.updateAssignedTeams(openEditTeams.id, data.teams)
+            .then(() => {
+                NotificationService.notifySuccess(`Updated assigned teams...`);
+                setOpenEditTeams(undefined);
+                resetEditTeams();
+            })
+            .catch((err: any) => {
+                console.log(err);
             });
 
     };
@@ -147,9 +205,84 @@ export default function Sources() {
         };
     }, []);
 
+    const [teams, setTeams] = React.useState<Team[] | undefined>(undefined);
+    const [teamFilter, setTeamFilter] = React.useState<{
+        [id: string]: Team
+    }>({});
+
+    React.useEffect(() => {
+        var sub: Subscription | undefined = undefined;
+        RealTimeAccess.GetStore<Team>("teams").then((s) => {
+            sub = s.subscribe((teams) => {
+                if (teams === undefined) {
+                    setTeams(undefined);
+                    return;
+                }
+                var objArray: Team[] = [];
+                for (const key in teams) {
+                    if (Object.prototype.hasOwnProperty.call(teams, key)) {
+                        const element = teams[key];
+                        objArray.push(element);
+                    }
+                }
+                objArray.sort((a, b) => {
+                    return a.name.localeCompare(b.name);
+                });
+
+                setTeams(objArray);
+            });
+        })
+        return () => {
+            sub?.unsubscribe();
+        };
+    }, []);
+
+    const [searchTerm, setSearchTerm] = React.useState<string>('');
     return <div>
-        <Grid container spacing={3}>
-            {sources ? sources.map((k) => {
+        <Paper>
+            <List component={Stack} direction="row" sx={{ paddingLeft: "4px" }}>
+                <TextField
+                    name="search"
+                    autoFocus={true}
+                    size="small"
+                    onChange={(ev: any) => { setSearchTerm(ev.target.value) }}
+                    type={"text"}
+                    value={searchTerm}
+                    label={"Search"}
+                    variant="outlined"
+                    margin="dense"
+                />
+                <TeamFilter teams={teams} userID={auth.user?.id} onChange={(selectedTeams) => {
+                    const tf: {
+                        [id: string]: Team
+                    } = {};
+                    for (let i = 0; i < selectedTeams.length; i++) {
+                        const element = selectedTeams[i];
+                        tf[element.id as string] = element;
+                    }
+                    setTeamFilter(tf);
+                }} />
+            </List>
+        </Paper>
+        <Grid container spacing={3} sx={{ marginTop: "0px" }}>
+            {sources ? sources.filter((src) => {
+                if (Object.keys(teamFilter).length === 0) {
+                    return true;
+                }
+
+                if (src.teams?.find((srcTeam) => {
+                    return teamFilter[srcTeam] !== undefined;
+                })) {
+                    return true;
+                }
+
+                return false;
+            }).filter((src) => {
+                if (searchTerm === "") {
+                    return true;
+                }
+                return src.name.toLowerCase().includes(searchTerm.toLowerCase());
+            }).map((k) => {
                 let avatar = <Avatar sx={{ bgcolor: teal[500] }} aria-label="recipe">
                     <QuestionMarkIcon />
                 </Avatar>;
@@ -218,26 +351,28 @@ export default function Sources() {
                             subheader={k.created ? new Date(k.created).toLocaleString() : ""}
                         />
                         <CardContent>
+                            <List sx={{ width: '100%', maxWidth: 360, bgcolor: 'background.paper' }} disablePadding={true} dense={true}>
+                                <ListItem alignItems="flex-start">
+                                    <ListItemText
+                                        primary="URL:"
+                                        secondary={
+                                            <React.Fragment>
+                                                <Typography
+                                                    sx={{ display: 'inline' }}
+                                                    component="span"
+                                                    variant="body2"
+                                                    color="text.primary"
+                                                >
+                                                    {k.url}
+                                                </Typography>
+                                            </React.Fragment>
+                                        }
+                                    />
+                                </ListItem>
+                            </List>
                             <Grid container spacing={3}>
                                 <Grid item xs={12} md={6} lg={6}>
                                     <List sx={{ width: '100%', maxWidth: 360, bgcolor: 'background.paper' }} disablePadding={true} dense={true}>
-                                        <ListItem alignItems="flex-start">
-                                            <ListItemText
-                                                primary="URL:"
-                                                secondary={
-                                                    <React.Fragment>
-                                                        <Typography
-                                                            sx={{ display: 'inline' }}
-                                                            component="span"
-                                                            variant="body2"
-                                                            color="text.primary"
-                                                        >
-                                                            {k.url}
-                                                        </Typography>
-                                                    </React.Fragment>
-                                                }
-                                            />
-                                        </ListItem>
                                         <ListItem alignItems="flex-start">
                                             <ListItemText
                                                 primary="Branch:"
@@ -404,7 +539,52 @@ export default function Sources() {
                             </List>
                         </CardContent>
                         <CardActions disableSpacing>
+                            <List component={Stack} direction="row">
+                                {k.teams?.map((team) => {
+                                    if (teams === undefined) {
+                                        return;
+                                    }
+                                    for (let i = 0; i < teams.length; i++) {
+                                        const element = teams[i];
+                                        if (element.id === team) {
+                                            return element;
+                                        }
+                                    }
+                                    return;
+                                }).sort((a, b) => {
+                                    if (a === undefined || b === undefined) {
+                                        return 0;
+                                    }
+                                    return a.name.localeCompare(b.name);
+                                }).map((team) => {
+                                    if (team === undefined) {
+                                        return;
+                                    }
+                                    return (
+                                        <ListItem key={team.id} sx={{ paddingRight: "0px", paddingLeft: "4px" }}>
+                                            <Chip
+                                                size='small'
+                                                label={team.name}
+                                            />
+                                        </ListItem>
+                                    );
+                                })}
+                            </List>
                             <span style={{ flexGrow: "1" }}></span>
+
+                            <Tooltip title="Edit teams">
+                                <IconButton aria-label="teams" color='primary' onClick={() => {
+                                    if (!k.id) {
+                                        return;
+                                    }
+                                    handleClickOpenEditTeams({
+                                        id: k.id,
+                                        teams: k.teams
+                                    });
+                                }}>
+                                    <GroupAddIcon />
+                                </IconButton>
+                            </Tooltip>
 
                             {k.status && k.status.status !== "paused" ? <Tooltip title="Pause"><IconButton aria-label="pause" color='primary' onClick={() => {
                                 if (!k.id) {
@@ -534,20 +714,60 @@ export default function Sources() {
                             value: key.id as string
                         }
                     }) : []} />
+                <div>
+                    <FormInputMultiCheckbox
+                        name="force"
+                        control={control}
+                        required={false}
+                        label="Force update on commit?"
+                        setValue={setValue}
+                        options={[{
+                            label: "Yes",
+                            value: "true"
+                        }]} />
+                </div>
                 <FormInputMultiCheckbox
-                    name="force"
+                    name="teams"
                     control={control}
                     required={false}
-                    label="Force update on commit?"
+                    label="Assigned teams"
                     setValue={setValue}
-                    options={[{
-                        label: "Yes",
-                        value: "true"
-                    }]} />
+                    options={teams ? teams.map((t) => {
+                        return {
+                            label: t.name,
+                            value: t.id as string
+                        }
+                    }) : []} />
             </DialogContent>
             <DialogActions>
                 <Button onClick={() => { handleClose() }}>Cancel</Button>
                 <Button onClick={handleSubmit(onSubmit)}>Save</Button>
+            </DialogActions>
+        </Dialog>
+        <Dialog open={openEditTeams !== undefined} onClose={handleCloseEditTeams}>
+            <DialogTitle>Manage Teams</DialogTitle>
+            <DialogContent>
+                <DialogContentText>
+                    Select the teams for this source.
+                </DialogContentText>
+                <FormInputMultiCheckbox
+                    name="teams"
+                    control={controlEditTeams}
+                    required={false}
+                    label="Assigned teams"
+                    setValue={setValueEditTeams}
+                    options={teams ? teams.map((t) => {
+                        const len = openEditTeams?.teams?.filter((inner) => { return inner === t.id; })
+                        return {
+                            label: t.name,
+                            value: t.id as string,
+                            selected: len ? len.length > 0 : false
+                        }
+                    }) : []} />
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => { handleCloseEditTeams() }}>Cancel</Button>
+                <Button onClick={handleSubmitEditTeams(onSubmitEditTeams)}>Save</Button>
             </DialogActions>
         </Dialog>
     </div >;

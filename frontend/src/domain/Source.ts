@@ -10,6 +10,7 @@ export interface Source {
     force?: boolean,
     created?: string,
     updated?: string,
+    teams?: string[],
     deployKey?: string | string[],
     status?: SourceStatus | null
 }

@@ -12,6 +12,8 @@ import RealTimeAccess from './services/RealTimeAccess';
 import Nav from './components/Nav';
 import { Outlet } from 'react-router-dom';
 import { Source } from './domain/Source';
+import { Team } from './domain/Team';
+import { User } from './domain/User';
 
 function Copyright(props: any) {
   return (
@@ -45,7 +47,7 @@ function DashboardContent() {
         }}
       >
         <Toolbar />
-        <Container maxWidth={false} sx={{ mt: 4, mb: 4 }}>
+        <Container maxWidth={false}>
           <Outlet />
           <Copyright sx={{ pt: 4 }} />
         </Container>
@@ -57,11 +59,30 @@ function DashboardContent() {
 export default function App() {
 
   // Initialize stores ...
+  RealTimeAccess.NewStore<User>("users", (record) => {
+    var res: User = {
+      id: record.id,
+      username: record["username"],
+      created: record.created
+    };
+
+    return res;
+  });
   RealTimeAccess.NewStore<Key>("keys", (record) => {
     var res: Key = {
       id: record.id,
       name: record["name"],
       value: record["value"],
+      created: record.created
+    };
+
+    return res;
+  });
+  RealTimeAccess.NewStore<Team>("teams", (record) => {
+    var res: Team = {
+      id: record.id,
+      name: record["name"],
+      members: record["members"],
       created: record.created
     };
 
@@ -81,7 +102,8 @@ export default function App() {
       created: record.created,
       updated: record.updated,
       status: record["status"],
-      deployKey: record["deployKey"]
+      deployKey: record["deployKey"],
+      teams: record["teams"]
     };
 
     return res;

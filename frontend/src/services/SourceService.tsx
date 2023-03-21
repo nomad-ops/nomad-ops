@@ -12,6 +12,11 @@ const SourceService = {
         };
         return pb.collection("sources").create<Source>(src);
     },
+    updateAssignedTeams: (id: string, teams?: string[]) => {
+        return pb.collection("sources").update(id, {
+            teams: teams
+        });
+    },
     syncSource: (id: string) => {
         return pb.send("/api/actions/sources/sync", {
             method: "POST",

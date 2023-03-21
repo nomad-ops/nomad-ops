@@ -6,6 +6,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/forms"
 	"github.com/pocketbase/pocketbase/models/schema"
+	"github.com/pocketbase/pocketbase/tools/types"
 
 	"github.com/nomad-ops/nomad-ops/backend/utils/log"
 )
@@ -17,11 +18,31 @@ func InitModels(ctx context.Context, logger log.Logger, app core.App) error {
 		return err
 	}
 
-	srcCollection, err := initSourceCollection(app, keyCollection)
+	usersCollection, err := app.Dao().FindCollectionByNameOrId("users")
+	if err != nil {
+		logger.LogError(ctx, "Could not FindCollectionByNameOrId('users'):%v - %T", err, err)
+		return err
+	}
+
+	// allow everyone authenticated to list users
+	form := forms.NewCollectionUpsert(app, usersCollection)
+	form.ListRule = types.Pointer("@request.auth.id != ''")
+	if err := form.Submit(); err != nil {
+		return err
+	}
+
+	teamCollection, err := initTeamCollection(app, usersCollection)
+	if err != nil {
+		logger.LogError(ctx, "Could not initTeamCollection:%v - %T", err, err)
+		return err
+	}
+
+	srcCollection, err := initSourceCollection(app, keyCollection, teamCollection)
 	if err != nil {
 		logger.LogError(ctx, "Could not initSourceCollection:%v - %T", err, err)
 		return err
 	}
+
 	_, err = initEventCollection(app, srcCollection)
 	if err != nil {
 		logger.LogError(ctx, "Could not initEventCollection:%v", err)

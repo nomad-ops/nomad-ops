@@ -6,5 +6,5 @@ export interface FormInputProps {
     required?: boolean,
     autoFocus?: boolean,
     setValue?: any;
-    options?: { label: string, value: string }[]
+    options?: { label: string, value: string, selected?: boolean }[]
 }

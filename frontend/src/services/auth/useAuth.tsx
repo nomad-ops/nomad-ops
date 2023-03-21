@@ -20,9 +20,10 @@ export const AuthProvider = ({ children }: { children: JSX.Element }) => {
     // call this function when you want to authenticate the user
     const login = async (username: string, password: string) => {
         return pb.collection("users").authWithPassword(username, password)
-            .then(() => {
+            .then((resp) => {
                 setUser({
-                    username: username
+                    id: resp.record.id,
+                    username: username,
                 });
                 navigate("/");
             });

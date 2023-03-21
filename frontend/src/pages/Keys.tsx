@@ -11,7 +11,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
-import { Button, CardActions, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Fab, Skeleton, Tooltip } from '@mui/material';
+import { Button, CardActions, Container, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Fab, List, Paper, Skeleton, Stack, TextField, Tooltip } from '@mui/material';
 import { teal } from '@mui/material/colors';
 import { Subscription } from 'rxjs';
 import { FormInputText } from '../components/form-components/FormInputText';
@@ -86,9 +86,31 @@ export default function Keys() {
             sub?.unsubscribe();
         };
     }, []);
+
+    const [searchTerm, setSearchTerm] = React.useState<string>('');
     return <div>
-        <Grid container spacing={3}>
-            {keys ? keys.map((k) => {
+        <Paper>
+            <List component={Stack} direction="row" sx={{ paddingLeft: "4px" }}>
+                <TextField
+                    name="search"
+                    autoFocus={true}
+                    size="small"
+                    onChange={(ev: any) => { setSearchTerm(ev.target.value) }}
+                    type={"text"}
+                    value={searchTerm}
+                    label={"Search"}
+                    variant="outlined"
+                    margin="dense"
+                />
+            </List>
+        </Paper>
+        <Grid container spacing={3} sx={{ marginTop: "0px" }}>
+            {keys ? keys.filter((k) => {
+                if (searchTerm === "") {
+                    return true;
+                }
+                return k.name.toLowerCase().includes(searchTerm.toLowerCase());
+            }).map((k) => {
                 return <Grid key={k.name} item xs={12} md={4} lg={3}>
                     <Card sx={{ maxWidth: 345 }}>
                         <CardHeader
