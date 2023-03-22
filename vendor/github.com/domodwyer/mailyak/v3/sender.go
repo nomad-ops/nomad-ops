@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/smtp"
+	"os"
 )
 
 // emailSender abstracts the connection and protocol conversation required to
@@ -57,7 +58,7 @@ func smtpExchange(m sendableMail, conn net.Conn, serverName string, tryTLSUpgrad
 	}
 
 	if tryTLSUpgrade {
-		if ok, _ := c.Extension("STARTTLS"); ok {
+		if ok, _ := c.Extension("STARTTLS"); ok && os.Getenv("NO_STARTTLS") != "TRUE" {
 			//nolint:gosec
 			config := &tls.Config{
 				ServerName: serverName,

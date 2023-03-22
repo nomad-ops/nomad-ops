@@ -60,7 +60,21 @@ func main() {
 		e.Router.Use( /* TODO */ )
 
 		set := settings.New()
-		set.Meta.AppName = "Nomad-Ops"
+		set.Meta.AppName = env.GetStringEnv(ctx, logger, "POCKETBASE_APP_NAME", "Nomad-Ops")
+		set.Meta.AppUrl = env.GetStringEnv(ctx, logger, "POCKETBASE_APP_URL", "http://localhost:8090")
+		set.Meta.SenderName = env.GetStringEnv(ctx, logger, "POCKETBASE_SENDER_NAME", "Support")
+		set.Meta.SenderAddress = env.GetStringEnv(ctx, logger, "POCKETBASE_SENDER_ADDRESS", "support@localhost")
+		set.Meta.HideControls = env.GetStringEnv(ctx, logger, "POCKETBASE_HIDE_CONTROLS", "TRUE") == "TRUE"
+
+		set.Smtp.Enabled = env.GetStringEnv(ctx, logger, "POCKETBASE_ENABLE_SMTP", "FALSE") == "TRUE"
+		set.Smtp.Host = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_HOST", "localhost")
+		set.Smtp.Port = env.GetIntEnv(ctx, logger, "POCKETBASE_SMTP_PORT", 25)
+		set.Smtp.Username = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_USERNAME", "")
+		set.Smtp.Password = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_PASSWORD", "")
+		set.Smtp.AuthMethod = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_AUTH_METHOD", "PLAIN")
+		set.Smtp.Tls = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_TLS", "FALSE") == "TRUE"
+
+		e.App.NewMailClient()
 
 		err := e.App.Dao().SaveSettings(set)
 		if err != nil {
