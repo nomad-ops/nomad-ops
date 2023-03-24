@@ -40,6 +40,9 @@ type Source struct {
 	// if true every commit forces an job update
 	Force bool `json:"force,omitempty"`
 
+	// if true no syncing is paused
+	Paused bool `json:"paused,omitempty"`
+
 	// if set, will override whatever is written in the job file
 	Namespace string `json:"namespace,omitempty"`
 
@@ -162,6 +165,11 @@ func initSourceCollection(app core.App,
 		Required: false,
 	})
 	addOrUpdateField(form, &schema.SchemaField{
+		Name:     "paused",
+		Type:     schema.FieldTypeBool,
+		Required: false,
+	})
+	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "status",
 		Type:     schema.FieldTypeJson,
 		Required: false,
@@ -208,6 +216,7 @@ func SourceFromRecord(record *models.Record, withStatus bool) *Source {
 		DeployKeyID:     record.GetString("deployKey"),
 		CreateNamespace: record.GetBool("createNamespace"),
 		Force:           record.GetBool("force"),
+		Paused:          record.GetBool("paused"),
 		Status:          status,
 	}
 

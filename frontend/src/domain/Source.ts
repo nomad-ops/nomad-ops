@@ -8,6 +8,7 @@ export interface Source {
     namespace?: string,
     region?: string,
     force?: boolean,
+    paused?: boolean,
     created?: string,
     updated?: string,
     teams?: string[],
@@ -15,6 +16,7 @@ export interface Source {
     status?: SourceStatus | null
 }
 export interface SourceStatus {
+    jobs?: {[jobID: string]: any}
     status: string,
     message?: string,
     lastCheckTime?: string

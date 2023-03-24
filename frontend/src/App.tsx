@@ -14,6 +14,7 @@ import { Outlet } from 'react-router-dom';
 import { Source } from './domain/Source';
 import { Team } from './domain/Team';
 import { User } from './domain/User';
+import NomadService from './services/NomadService';
 
 function Copyright(props: any) {
   return (
@@ -99,6 +100,7 @@ export default function App() {
       namespace: record["namespace"],
       region: record["region"],
       force: record["force"],
+      paused: record["paused"],
       created: record.created,
       updated: record.updated,
       status: record["status"],

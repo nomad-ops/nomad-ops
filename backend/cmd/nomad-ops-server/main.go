@@ -7,8 +7,10 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/hashicorp/nomad/api"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 	"github.com/pocketbase/pocketbase"
@@ -73,8 +75,6 @@ func main() {
 		set.Smtp.Password = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_PASSWORD", "")
 		set.Smtp.AuthMethod = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_AUTH_METHOD", "PLAIN")
 		set.Smtp.Tls = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_TLS", "FALSE") == "TRUE"
-
-		e.App.NewMailClient()
 
 		err := e.App.Dao().SaveSettings(set)
 		if err != nil {
@@ -268,6 +268,7 @@ func main() {
 					logger.LogError(ctx, "Could not UpdateSource:%v", err)
 					return err
 				}
+				logger.LogInfo(ctx, "updated source")
 			}
 
 			return nil
@@ -340,47 +341,66 @@ func main() {
 			},
 		})
 
-		// add new "POST /api/actions/sources/pause" route
 		e.Router.AddRoute(echo.Route{
-			Method: http.MethodPost,
-			Path:   "/api/actions/sources/pause",
+			Method: http.MethodGet,
+			Path:   "/api/nomad/proxy/*",
 			Handler: func(c echo.Context) error {
-				id := c.QueryParam("id")
-				if id == "" {
-					return c.JSON(http.StatusBadRequest, domain.Error{
-						Message: log.ToStrPtr("Expected a valid 'id' parameter"),
+
+				var params map[string]string
+
+				for k, v := range c.QueryParams() {
+					if len(v) == 0 {
+						continue
+					}
+					if params == nil {
+						params = map[string]string{}
+					}
+					params[k] = v[0]
+				}
+
+				resp, err := nomadAPI.ProxyHandler(c.Request().Context(),
+					strings.TrimPrefix(c.Request().URL.EscapedPath(), "/api/nomad/proxy"),
+					api.QueryOptions{
+						Params: params,
 					})
-				}
-
-				pause := c.QueryParam("pause") == "true"
-
-				if pause {
-					logger.LogInfo(c.Request().Context(), "Pausing watch on source %s...", id)
-				} else {
-					logger.LogInfo(c.Request().Context(), "Resuming watch on source %s...", id)
-				}
-				err := watcher.PauseSourceByID(c.Request().Context(), id, application.PauseOptions{
-					Pause: pause,
-				})
-
-				if err == errors.ErrNotFound {
-					return c.JSON(http.StatusNotFound, domain.Error{
-						Message: log.ToStrPtr("Source was not found"),
-					})
-				}
 
 				if err != nil {
-					logger.LogError(c.Request().Context(), "Could not PauseSourceByID:%v", err)
+					logger.LogError(c.Request().Context(), "Could not handle Nomad Proxy Request:%v", err)
 					return c.JSON(http.StatusInternalServerError, domain.Error{
 						Message: log.ToStrPtr("Unexpected error"),
 					})
 				}
+				defer resp.Close()
 
-				return c.JSON(http.StatusOK, map[string]string{}) // empty 200 OK response
+				return c.Stream(http.StatusOK, "application/json", resp)
 			},
 			Middlewares: []echo.MiddlewareFunc{
 				apis.RequireAdminOrRecordAuth("users"),
-				apis.ActivityLogger(e.App),
+				middleware.CORSWithConfig(middleware.CORSConfig{}),
+				middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{}),
+				middleware.Recover(),
+				middleware.LoggerWithConfig(middleware.LoggerConfig{}),
+			},
+		})
+
+		e.Router.AddRoute(echo.Route{
+			Method: http.MethodGet,
+			Path:   "/api/nomad/urls",
+			Handler: func(c echo.Context) error {
+
+				u, err := nomadAPI.GetURL(c.Request().Context())
+				if err != nil {
+					return c.JSONPretty(http.StatusInternalServerError, domain.Error{
+						Message: log.ToStrPtr("Unexpected error"),
+					}, "    ")
+				}
+
+				return c.JSONPretty(http.StatusOK, map[string]string{
+					"ui": u,
+				}, "    ")
+			},
+			Middlewares: []echo.MiddlewareFunc{
+				apis.RequireAdminOrRecordAuth("users"),
 				middleware.CORSWithConfig(middleware.CORSConfig{}),
 				middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{}),
 				middleware.Recover(),

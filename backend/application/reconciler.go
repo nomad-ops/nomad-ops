@@ -54,7 +54,7 @@ type DeploymentStatus struct {
 
 type ClusterAPI interface {
 	GetCurrentClusterState(ctx context.Context, opts GetCurrentClusterStateOptions) (*ClusterState, error)
-	UpdateJob(ctx context.Context, src *domain.Source, job *JobInfo, restart, dryRun bool) (*UpdateJobInfo, error)
+	UpdateJob(ctx context.Context, src *domain.Source, job *JobInfo, restart bool) (*UpdateJobInfo, error)
 	DeleteJob(ctx context.Context, src *domain.Source, job *JobInfo) error
 }
 
@@ -68,12 +68,12 @@ type ChangeInfo struct {
 type ReconcilerFunc func(ctx context.Context,
 	src *domain.Source,
 	desiredState *DesiredState,
-	restart bool, dryRun bool) (*domain.SourceStatus, *ChangeInfo, error)
+	restart bool) (*domain.SourceStatus, *ChangeInfo, error)
 
 func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 	src *domain.Source,
 	desiredState *DesiredState,
-	restart, dryRun bool) (*domain.SourceStatus, *ChangeInfo, error) {
+	restart bool) (*domain.SourceStatus, *ChangeInfo, error) {
 
 	currentState, err := r.clusterAccess.GetCurrentClusterState(ctx, GetCurrentClusterStateOptions{
 		Source: src,
@@ -83,7 +83,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 	}
 
 	changed := &ChangeInfo{
-		DryRun: dryRun,
+		DryRun: src.Paused,
 		Create: map[string]*JobInfo{},
 		Delete: map[string]*JobInfo{},
 		Update: map[string]*JobInfo{},
@@ -100,7 +100,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			cpy := job
 			changed.Delete[k] = cpy
 
-			if dryRun {
+			if src.Paused {
 				r.logger.LogInfo(ctx, "Found job %s that is no longer desired. Would be deleted...", k)
 				continue
 			}
@@ -131,7 +131,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 
 	for k, job := range desiredState.Jobs {
 		r.logger.LogTrace(ctx, "Updating job %v...%+v", strPtrToStr(job.Name), log.ToJSONString(job))
-		info, err := r.clusterAccess.UpdateJob(ctx, src, job, restart, dryRun)
+		info, err := r.clusterAccess.UpdateJob(ctx, src, job, restart)
 		if err != nil {
 			r.logger.LogInfo(ctx, "Could not UpdateJob %v", log.ToJSONString(job))
 			return nil, nil, err
@@ -184,7 +184,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			cpy := job
 			changed.Create[k] = cpy
 
-			if dryRun {
+			if src.Paused {
 				r.logger.LogInfo(ctx, "Would create job %v", strPtrToStr(job.Name))
 				continue
 			}
@@ -205,7 +205,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			cpy := job
 			changed.Update[k] = cpy
 
-			if dryRun {
+			if src.Paused {
 				r.logger.LogInfo(ctx, "Would update job %v", strPtrToStr(job.Name))
 				continue
 			}

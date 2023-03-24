@@ -27,8 +27,6 @@ type WatchInfo struct {
 	Reconciler ReconcilerFunc
 	syncFunc   func(context.Context, SyncSourceOptions) error
 	syncCh     chan SyncSourceOptions
-	pauseFunc  func(context.Context, PauseOptions) error
-	pauseCh    chan PauseOptions
 	updateFunc func(context.Context, *domain.Source) error
 	updateCh   chan *domain.Source
 }
@@ -72,10 +70,6 @@ func CreateRepoWatcher(ctx context.Context,
 	return t, nil
 }
 
-type PauseOptions struct {
-	Pause bool
-}
-
 type SyncSourceOptions struct {
 	ForceRestart bool
 }
@@ -89,21 +83,6 @@ func (w *RepoWatcher) SyncSourceByID(ctx context.Context, id string, opts SyncSo
 	w.lock.Unlock()
 	w.logger.LogInfo(ctx, "Syncing repo %s on branch %s", wi.Source.URL, wi.Source.Branch)
 	err := wi.syncFunc(ctx, opts)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (w *RepoWatcher) PauseSourceByID(ctx context.Context, id string, opts PauseOptions) error {
-	w.lock.Lock()
-	wi, ok := w.watchList[id]
-	if !ok {
-		return errors.ErrNotFound
-	}
-	w.lock.Unlock()
-	w.logger.LogInfo(ctx, "Pausing repo %s on branch %s: %v", wi.Source.URL, wi.Source.Branch, opts.Pause)
-	err := wi.pauseFunc(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -199,15 +178,6 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				return ctx.Err()
 			}
 		},
-		pauseCh: make(chan PauseOptions),
-		pauseFunc: func(ctx context.Context, opts PauseOptions) error {
-			select {
-			case wi.pauseCh <- opts:
-				return nil
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		},
 		updateCh: make(chan *domain.Source),
 		updateFunc: func(ctx context.Context, src *domain.Source) error {
 			select {
@@ -253,8 +223,6 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 					w.cfg.AppName)).Dec()
 		}()
 
-		paused := false
-
 		waitTime := w.cfg.Interval
 
 		for {
@@ -271,8 +239,6 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			case <-time.After(waitTime):
 			case opts := <-wi.syncCh:
 				restart = opts.ForceRestart
-			case opts := <-wi.pauseCh:
-				paused = opts.Pause
 			case src := <-wi.updateCh:
 				w.logger.LogInfo(wi.ctx, "Updating watch on %s %s - %s", wi.Source.Name, wi.Source.URL, wi.Source.Path)
 				wi.Source = src
@@ -396,7 +362,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				continue
 			}
 
-			status, changeInfo, err := wi.Reconciler(wi.ctx, wi.Source, desiredState, restart, paused)
+			status, changeInfo, err := wi.Reconciler(wi.ctx, wi.Source, desiredState, restart)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not Reconcile: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
 				if !hasError {
@@ -497,12 +463,13 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				}
 			}
 
-			if paused {
-				status.Status = domain.SourceStatusStatusPaused
+			if wi.Source.Paused {
+				status.Status = domain.SourceStatusStatusSynced
 				msg := "Still in sync"
 				if len(changeInfo.Create) > 0 || len(changeInfo.Update) > 0 || len(changeInfo.Delete) > 0 {
 					msg = fmt.Sprintf("Out of sync: %d to create, %d to update, %d to delete",
 						len(changeInfo.Create), len(changeInfo.Update), len(changeInfo.Delete))
+					status.Status = domain.SourceStatusStatusOutOfSync
 				}
 				status.Message = msg
 			}
