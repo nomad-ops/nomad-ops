@@ -33,6 +33,7 @@ type Client struct {
 	logger log.Logger
 	cfg    ClientConfig
 	client *api.Client
+	url    string
 }
 
 func CreateClient(ctx context.Context,
@@ -57,6 +58,7 @@ func CreateClient(ctx context.Context,
 		logger: logger,
 		cfg:    cfg,
 		client: client,
+		url:    defCfg.Address,
 	}
 
 	return c, nil
@@ -200,7 +202,7 @@ func (c *Client) getWriteOptions(ctx context.Context, src *domain.Source) *api.W
 func (c *Client) UpdateJob(ctx context.Context,
 	src *domain.Source,
 	job *application.JobInfo,
-	restart, dryRun bool) (*application.UpdateJobInfo, error) {
+	restart bool) (*application.UpdateJobInfo, error) {
 
 	if src.CreateNamespace {
 		if job.Namespace == nil {
@@ -266,7 +268,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 
 	c.logger.LogInfo(ctx, "Job Diff:%v", log.ToJSONString(resp.Diff))
 
-	if !dryRun {
+	if !src.Paused {
 		regResp, _, err := c.client.Jobs().Register(job.Job, c.getWriteOptions(ctx, src))
 		if err != nil {
 			return nil, err
@@ -292,6 +294,10 @@ func (c *Client) DeleteJob(ctx context.Context, src *domain.Source, job *applica
 	}
 
 	return nil
+}
+
+func (c *Client) GetURL(ctx context.Context) (string, error) {
+	return c.url, nil
 }
 
 func (c *Client) GetCurrentClusterState(ctx context.Context,

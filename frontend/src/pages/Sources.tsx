@@ -4,7 +4,7 @@ import { Subscription } from 'rxjs';
 import { Source } from '../domain/Source';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RealTimeAccess from '../services/RealTimeAccess';
-import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Chip, Paper, Stack, TextField } from '@mui/material';
+import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Chip, Paper, Stack, TextField, Box, Drawer, ListItemButton, ListItemIcon, useMediaQuery, Toolbar } from '@mui/material';
 import { orange, red, teal } from '@mui/material/colors';
 import CheckIcon from '@mui/icons-material/Check';
 import ErrorIcon from '@mui/icons-material/Error';
@@ -16,6 +16,8 @@ import NotStartedIcon from '@mui/icons-material/NotStarted';
 import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import QuestionMarkIcon from '@mui/icons-material/QuestionMark';
 import PauseIcon from '@mui/icons-material/Pause';
+import InfoIcon from '@mui/icons-material/Info';
+import PublishedWithChangesIcon from '@mui/icons-material/PublishedWithChanges';
 import { useForm } from "react-hook-form";
 import SourceService from '../services/SourceService';
 import NotificationService from '../services/NotificationService';
@@ -26,6 +28,7 @@ import { FormInputMultiCheckbox } from '../components/form-components/FormInputM
 import { Team } from '../domain/Team';
 import TeamFilter from '../components/TeamFilter';
 import { useAuth } from '../services/auth/useAuth';
+import SourceDetailDrawer from '../components/SourceDetailDrawer';
 
 interface IFormInput {
     name: string;
@@ -238,6 +241,29 @@ export default function Sources() {
     }, []);
 
     const [searchTerm, setSearchTerm] = React.useState<string>('');
+
+    const [detailDrawerState, setDetailDrawerState] = React.useState<{
+        open: boolean,
+        source: Source | undefined
+    }>({
+        open: false,
+        source: undefined
+    });
+
+    const toggleDrawer =
+        (open: boolean, source: Source | undefined) =>
+            (event: React.KeyboardEvent | React.MouseEvent) => {
+                if (
+                    event.type === 'keydown' &&
+                    ((event as React.KeyboardEvent).key === 'Tab' ||
+                        (event as React.KeyboardEvent).key === 'Shift')
+                ) {
+                    return;
+                }
+
+                setDetailDrawerState({ ...detailDrawerState, open: open, source: source });
+            };
+
     return <div>
         <Paper>
             <List component={Stack} direction="row" sx={{ paddingLeft: "4px" }}>
@@ -307,9 +333,9 @@ export default function Sources() {
                             <LoopIcon />
                         </Avatar>;
                         break;
-                    case "paused":
+                    case "outofsync":
                         avatar = <Avatar sx={{ bgcolor: orange[500] }} aria-label="recipe">
-                            <PauseIcon />
+                            <PublishedWithChangesIcon />
                         </Avatar>;
                         break;
                     case "error":
@@ -340,8 +366,6 @@ export default function Sources() {
                 }
 
                 return <Grid key={k.id} item xs={12} md={6} lg={4}>
-
-
                     <Card>
                         <CardHeader
                             avatar={
@@ -349,6 +373,14 @@ export default function Sources() {
                             }
                             title={k.name}
                             subheader={k.created ? new Date(k.created).toLocaleString() : ""}
+                            action={
+                                k.status && k.status.jobs && Object.keys(k.status.jobs).length > 0 ? <IconButton
+                                    color='primary'
+                                    onClick={toggleDrawer(true, k)}
+                                    aria-label="info">
+                                    <InfoIcon />
+                                </IconButton> : undefined
+                            }
                         />
                         <CardContent>
                             <List sx={{ width: '100%', maxWidth: 360, bgcolor: 'background.paper' }} disablePadding={true} dense={true}>
@@ -540,26 +572,21 @@ export default function Sources() {
                         </CardContent>
                         <CardActions disableSpacing>
                             <List component={Stack} direction="row">
-                                {k.teams?.map((team) => {
-                                    if (teams === undefined) {
-                                        return;
-                                    }
+                                {k.teams && teams ? k.teams.map((team) => {
                                     for (let i = 0; i < teams.length; i++) {
                                         const element = teams[i];
                                         if (element.id === team) {
                                             return element;
                                         }
                                     }
-                                    return;
+                                    throw new Error("expected to find team");
                                 }).sort((a, b) => {
                                     if (a === undefined || b === undefined) {
                                         return 0;
                                     }
                                     return a.name.localeCompare(b.name);
                                 }).map((team) => {
-                                    if (team === undefined) {
-                                        return;
-                                    }
+                                    team = team as Team;
                                     return (
                                         <ListItem key={team.id} sx={{ paddingRight: "0px", paddingLeft: "4px" }}>
                                             <Chip
@@ -568,7 +595,7 @@ export default function Sources() {
                                             />
                                         </ListItem>
                                     );
-                                })}
+                                }) : undefined}
                             </List>
                             <span style={{ flexGrow: "1" }}></span>
 
@@ -586,28 +613,32 @@ export default function Sources() {
                                 </IconButton>
                             </Tooltip>
 
-                            {k.status && k.status.status !== "paused" ? <Tooltip title="Pause"><IconButton aria-label="pause" color='primary' onClick={() => {
-                                if (!k.id) {
-                                    return;
-                                }
-                                SourceService.pauseSource(k.id, true)
-                                    .then(() => {
-                                        NotificationService.notifySuccess(`Paused ${k.url} ...`);
-                                    });
-                            }}>
-                                <PauseIcon />
-                            </IconButton></Tooltip> : undefined}
-                            {k.status && k.status.status === "paused" ? <Tooltip title="Resume"><IconButton aria-label="resume" color='primary' onClick={() => {
-                                if (!k.id) {
-                                    return;
-                                }
-                                SourceService.pauseSource(k.id, false)
-                                    .then(() => {
-                                        NotificationService.notifySuccess(`Resumed watch on ${k.url} ...`);
-                                    });
-                            }}>
-                                <NotStartedIcon />
-                            </IconButton></Tooltip> : undefined}
+                            {k.paused !== true ? <Tooltip title="Pause">
+                                <IconButton aria-label="pause" color='primary' onClick={() => {
+                                    if (!k.id) {
+                                        return;
+                                    }
+                                    SourceService.pauseSource(k.id, true)
+                                        .then(() => {
+                                            NotificationService.notifySuccess(`Paused ${k.url} ...`);
+                                        });
+                                }}>
+                                    <PauseIcon />
+                                </IconButton>
+                            </Tooltip> : undefined}
+                            {k.paused === true ? <Tooltip title="Resume">
+                                <IconButton aria-label="resume" color='primary' onClick={() => {
+                                    if (!k.id) {
+                                        return;
+                                    }
+                                    SourceService.pauseSource(k.id, false)
+                                        .then(() => {
+                                            NotificationService.notifySuccess(`Resumed watch on ${k.url} ...`);
+                                        });
+                                }}>
+                                    <NotStartedIcon />
+                                </IconButton>
+                            </Tooltip> : undefined}
                             <Tooltip title="Sync">
                                 <IconButton aria-label="sync" color='primary' onClick={() => {
                                     if (!k.id) {
@@ -770,5 +801,8 @@ export default function Sources() {
                 <Button onClick={handleSubmitEditTeams(onSubmitEditTeams)}>Save</Button>
             </DialogActions>
         </Dialog>
+        {detailDrawerState.source ? <SourceDetailDrawer open={detailDrawerState.open}
+            onClose={toggleDrawer(false, undefined)}
+            source={detailDrawerState.source}></SourceDetailDrawer> : undefined}
     </div >;
 }

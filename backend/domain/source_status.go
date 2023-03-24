@@ -24,7 +24,7 @@ type SourceStatus struct {
 
 	// status
 	// Read Only: true
-	// Enum: [synced error unknown syncing paused init]
+	// Enum: [synced error unknown syncing init]
 	Status string `json:"status,omitempty"`
 }
 
@@ -54,6 +54,8 @@ func (s *SourceStatus) DetermineSyncStatus() bool {
 const (
 	SourceStatusStatusSynced string = "synced"
 
+	SourceStatusStatusOutOfSync string = "outofsync"
+
 	SourceStatusStatusSyncedWithError string = "syncedwitherror"
 
 	SourceStatusStatusError string = "error"
@@ -61,8 +63,6 @@ const (
 	SourceStatusStatusUnknown string = "unknown"
 
 	SourceStatusStatusSyncing string = "syncing"
-
-	SourceStatusStatusPaused string = "paused"
 
 	SourceStatusStatusInit string = "init"
 )

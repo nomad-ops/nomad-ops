@@ -25,13 +25,9 @@ const SourceService = {
             }
         });
     },
-    pauseSource: (id: string, pause: boolean) => {
-        return pb.send("/api/actions/sources/pause", {
-            method: "POST",
-            params: {
-                id: id,
-                pause: pause
-            }
+    pauseSource: (id: string, paused: boolean) => {
+        return pb.collection("sources").update(id, {
+            paused: paused
         });
     },
 }
