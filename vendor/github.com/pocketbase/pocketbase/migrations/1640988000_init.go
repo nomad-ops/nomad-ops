@@ -42,8 +42,8 @@ func init() {
 				[[tokenKey]]        TEXT UNIQUE NOT NULL,
 				[[passwordHash]]    TEXT NOT NULL,
 				[[lastResetSentAt]] TEXT DEFAULT "" NOT NULL,
-				[[created]]         TEXT DEFAULT "" NOT NULL,
-				[[updated]]         TEXT DEFAULT "" NOT NULL
+				[[created]]         TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL,
+				[[updated]]         TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL
 			);
 
 			CREATE TABLE {{_collections}} (
@@ -52,14 +52,15 @@ func init() {
 				[[type]]       TEXT DEFAULT "base" NOT NULL,
 				[[name]]       TEXT UNIQUE NOT NULL,
 				[[schema]]     JSON DEFAULT "[]" NOT NULL,
+				[[indexes]]    JSON DEFAULT "[]" NOT NULL,
 				[[listRule]]   TEXT DEFAULT NULL,
 				[[viewRule]]   TEXT DEFAULT NULL,
 				[[createRule]] TEXT DEFAULT NULL,
 				[[updateRule]] TEXT DEFAULT NULL,
 				[[deleteRule]] TEXT DEFAULT NULL,
 				[[options]]    JSON DEFAULT "{}" NOT NULL,
-				[[created]]    TEXT DEFAULT "" NOT NULL,
-				[[updated]]    TEXT DEFAULT "" NOT NULL
+				[[created]]    TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL,
+				[[updated]]    TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL
 			);
 
 			CREATE TABLE {{_params}} (
@@ -76,8 +77,8 @@ func init() {
 				[[recordId]]     TEXT NOT NULL,
 				[[provider]]     TEXT NOT NULL,
 				[[providerId]]   TEXT NOT NULL,
-				[[created]]      TEXT DEFAULT "" NOT NULL,
-				[[updated]]      TEXT DEFAULT "" NOT NULL,
+				[[created]]      TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL,
+				[[updated]]      TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL,
 				---
 				FOREIGN KEY ([[collectionId]]) REFERENCES {{_collections}} ([[id]]) ON UPDATE CASCADE ON DELETE CASCADE
 			);

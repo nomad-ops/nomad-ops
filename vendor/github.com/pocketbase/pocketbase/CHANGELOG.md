@@ -1,6 +1,77 @@
+## v0.14.2
+
+- Reverted part of the old `COALESCE` handling to continue supporting empty string comparison with missing joined relation fields.
+
+
+## v0.14.1
+
+- Fixed realtime events firing before the files upload completion.
+
+- Updated the underlying S3 lib to use `aws-sdk-go-v2` ([#1346](https://github.com/pocketbase/pocketbase/pull/1346); thanks @yuxiang-gao).
+
+- Updated TinyMCE to v6.4.1.
+
+- Updated the godoc of `Dao.Save*` methods.
+
+
+## v0.14.0
+
+- Added _experimental_ Apple OAuth2 integration.
+
+- Added `@request.headers.*` filter rule support.
+
+- Added support for advanced unique constraints and indexes management ([#345](https://github.com/pocketbase/pocketbase/issues/345), [#544](https://github.com/pocketbase/pocketbase/issues/544))
+
+- Simplified the collections fields UI to allow easier and quicker scaffolding of the data schema.
+
+- Deprecated `SchemaField.Unique`. Unique constraints are now managed via indexes.
+  The `Unique` field is a no-op and will be removed in future version.
+
+- Removed the `COALESCE` wrapping from some of the generated filter conditions to make better use of the indexes ([#1939](https://github.com/pocketbase/pocketbase/issues/1939)).
+
+- Detect `id` aliased view columns as single `relation` fields ([#2029](https://github.com/pocketbase/pocketbase/discussions/2029)).
+
+- Optimized single relation lookups.
+
+- Normalized record values on `maxSelect` field option change (`select`, `file`, `relation`).
+  When changing **from single to multiple** all already inserted single values are converted to an array.
+  When changing **from multiple to single** only the last item of the already inserted array items is kept.
+
+- Changed the cost/round factor of bcrypt hash generation from 13 to 12 since several users complained about the slow authWithPassword responses on lower spec hardware.
+  _The change will affect only new users. Depending on the demand, we might make it configurable from the auth options._
+
+- Simplified the default mail template styles to allow more control over the template layout ([#1904](https://github.com/pocketbase/pocketbase/issues/1904)).
+
+- Added option to explicitly set the record id from the Admin UI ([#2118](https://github.com/pocketbase/pocketbase/issues/2118)).
+
+- Added `migrate history-sync` command to clean `_migrations` history table from deleted migration files references.
+
+- Added new fields to the `core.RecordAuthWithOAuth2Event` struct:
+    ```
+    IsNewRecord     bool,          // boolean field indicating whether the OAuth2 action created a new auth record
+    ProviderName    string,        // the name of the OAuth2 provider (eg. "google")
+    ProviderClient  auth.Provider, // the loaded Provider client instance
+    ```
+
+- Added CGO linux target for the prebuilt executable.
+
+- **!** Renamed `daos.GetTableColumns()` to `daos.TableColumns()` for consistency with the other Dao table related helpers.
+
+- **!** Renamed `daos.GetTableInfo()` to `daos.TableInfo()` for consistency with the other Dao table related helpers.
+
+- **!** Changed `types.JsonArray` to support specifying a generic type, aka. `types.JsonArray[T]`.
+  If you have previously used `types.JsonArray`, you'll have to update it to `types.JsonArray[any]`.
+
+- **!** Registered the `RemoveTrailingSlash` middleware only for the `/api/*` routes since it is causing issues with subpath file serving endpoints ([#2072](https://github.com/pocketbase/pocketbase/issues/2072)).
+
+- **!** Changed the request logs `method` value to UPPERCASE, eg. "get" => "GET" ([#1956](https://github.com/pocketbase/pocketbase/discussions/1956)).
+
+- Other minor UI improvements.
+
+
 ## v0.13.4
 
-- Removed eager unique collection name check to allow lazy evaluation during bulk import.
+- Removed eager unique collection name check to support lazy validation during bulk import.
 
 
 ## v0.13.3

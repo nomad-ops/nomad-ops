@@ -1,8 +1,10 @@
 package forms
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/go-ozzo/ozzo-validation/v4/is"
@@ -16,9 +18,10 @@ import (
 
 // RecordOAuth2LoginData defines the OA
 type RecordOAuth2LoginData struct {
-	ExternalAuth *models.ExternalAuth
-	Record       *models.Record
-	OAuth2User   *auth.AuthUser
+	ExternalAuth   *models.ExternalAuth
+	Record         *models.Record
+	OAuth2User     *auth.AuthUser
+	ProviderClient auth.Provider
 }
 
 // BeforeOAuth2RecordCreateFunc defines a callback function that will
@@ -127,6 +130,11 @@ func (form *RecordOAuth2Login) Submit(
 		return nil, nil, err
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	provider.SetContext(ctx)
+
 	// load provider configuration
 	providerConfig := form.app.Settings().NamedAuthProviderConfigs()[form.Provider]
 	if err := providerConfig.SetupProvider(provider); err != nil {
@@ -169,9 +177,10 @@ func (form *RecordOAuth2Login) Submit(
 	}
 
 	interceptorData := &RecordOAuth2LoginData{
-		ExternalAuth: rel,
-		Record:       authRecord,
-		OAuth2User:   authUser,
+		ExternalAuth:   rel,
+		Record:         authRecord,
+		OAuth2User:     authUser,
+		ProviderClient: provider,
 	}
 
 	interceptorsErr := runInterceptors(interceptorData, func(newData *RecordOAuth2LoginData) error {

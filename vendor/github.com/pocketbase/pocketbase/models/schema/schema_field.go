@@ -131,8 +131,12 @@ type SchemaField struct {
 	Name     string `form:"name" json:"name"`
 	Type     string `form:"type" json:"type"`
 	Required bool   `form:"required" json:"required"`
-	Unique   bool   `form:"unique" json:"unique"`
-	Options  any    `form:"options" json:"options"`
+
+	// Deprecated: This field is no-op and will be removed in future versions.
+	// Please use the collection.Indexes field to define a unique constraint.
+	Unique bool `form:"unique" json:"unique"`
+
+	Options any `form:"options" json:"options"`
 }
 
 // ColDefinition returns the field db column type definition as string.
@@ -321,7 +325,7 @@ func (f *SchemaField) PrepareValue(value any) any {
 		val := list.ToUniqueStringSlice(value)
 
 		options, _ := f.Options.(*SelectOptions)
-		if options.MaxSelect <= 1 {
+		if !options.IsMultiple() {
 			if len(val) > 0 {
 				return val[len(val)-1] // the last selected
 			}
@@ -333,7 +337,7 @@ func (f *SchemaField) PrepareValue(value any) any {
 		val := list.ToUniqueStringSlice(value)
 
 		options, _ := f.Options.(*FileOptions)
-		if options.MaxSelect <= 1 {
+		if !options.IsMultiple() {
 			if len(val) > 0 {
 				return val[len(val)-1] // the last selected
 			}
@@ -345,7 +349,7 @@ func (f *SchemaField) PrepareValue(value any) any {
 		ids := list.ToUniqueStringSlice(value)
 
 		options, _ := f.Options.(*RelationOptions)
-		if options.MaxSelect != nil && *options.MaxSelect <= 1 {
+		if !options.IsMultiple() {
 			if len(ids) > 0 {
 				return ids[len(ids)-1] // the last selected
 			}
@@ -399,7 +403,12 @@ func (f *SchemaField) PrepareValueWithModifier(baseValue any, modifier string, m
 
 // -------------------------------------------------------------------
 
-// FieldOptions interfaces that defines common methods that every field options struct has.
+// MultiValuer defines common interface methods that every multi-valued (eg. with MaxSelect) field option struct has.
+type MultiValuer interface {
+	IsMultiple() bool
+}
+
+// FieldOptions defines common interface methods that every field option struct has.
 type FieldOptions interface {
 	Validate() error
 }
@@ -564,6 +573,12 @@ func (o SelectOptions) Validate() error {
 	)
 }
 
+// IsMultiple implements MultiValuer interface and checks whether the
+// current field options support multiple values.
+func (o SelectOptions) IsMultiple() bool {
+	return o.MaxSelect > 1
+}
+
 // -------------------------------------------------------------------
 
 type JsonOptions struct {
@@ -574,6 +589,8 @@ func (o JsonOptions) Validate() error {
 }
 
 // -------------------------------------------------------------------
+
+var _ MultiValuer = (*FileOptions)(nil)
 
 type FileOptions struct {
 	MaxSelect int      `form:"maxSelect" json:"maxSelect"`
@@ -593,7 +610,15 @@ func (o FileOptions) Validate() error {
 	)
 }
 
+// IsMultiple implements MultiValuer interface and checks whether the
+// current field options support multiple values.
+func (o FileOptions) IsMultiple() bool {
+	return o.MaxSelect > 1
+}
+
 // -------------------------------------------------------------------
+
+var _ MultiValuer = (*RelationOptions)(nil)
 
 type RelationOptions struct {
 	// CollectionId is the id of the related collection.
@@ -630,6 +655,12 @@ func (o RelationOptions) Validate() error {
 		validation.Field(&o.MinSelect, validation.NilOrNotEmpty, validation.Min(1)),
 		validation.Field(&o.MaxSelect, validation.NilOrNotEmpty, validation.Min(minVal)),
 	)
+}
+
+// IsMultiple implements MultiValuer interface and checks whether the
+// current field options support multiple values.
+func (o RelationOptions) IsMultiple() bool {
+	return o.MaxSelect == nil || *o.MaxSelect > 1
 }
 
 // -------------------------------------------------------------------

@@ -36,8 +36,8 @@ func InitApi(app core.App) (*echo.Echo, error) {
 	// default middlewares
 	e.Pre(middleware.RemoveTrailingSlashWithConfig(middleware.RemoveTrailingSlashConfig{
 		Skipper: func(c echo.Context) bool {
-			// ignore Admin UI route(s)
-			return strings.HasPrefix(c.Request().URL.Path, trailedAdminPath)
+			// enable by default only for the API routes
+			return !strings.HasPrefix(c.Request().URL.Path, "/api/")
 		},
 	}))
 	e.Use(middleware.Recover())
@@ -47,6 +47,9 @@ func InitApi(app core.App) (*echo.Echo, error) {
 	// custom error handler
 	e.HTTPErrorHandler = func(c echo.Context, err error) {
 		if c.Response().Committed {
+			if app.IsDebug() {
+				log.Println("HTTPErrorHandler response was already committed:", err)
+			}
 			return
 		}
 

@@ -55,6 +55,7 @@ type Settings struct {
 	OIDCAuth      AuthProviderConfig `form:"oidcAuth" json:"oidcAuth"`
 	OIDC2Auth     AuthProviderConfig `form:"oidc2Auth" json:"oidc2Auth"`
 	OIDC3Auth     AuthProviderConfig `form:"oidc3Auth" json:"oidc3Auth"`
+	AppleAuth     AuthProviderConfig `form:"appleAuth" json:"appleAuth"`
 }
 
 // New creates and returns a new default Settings instance.
@@ -156,6 +157,9 @@ func New() *Settings {
 		OIDC3Auth: AuthProviderConfig{
 			Enabled: false,
 		},
+		AppleAuth: AuthProviderConfig{
+			Enabled: false,
+		},
 	}
 }
 
@@ -192,6 +196,7 @@ func (s *Settings) Validate() error {
 		validation.Field(&s.OIDCAuth),
 		validation.Field(&s.OIDC2Auth),
 		validation.Field(&s.OIDC3Auth),
+		validation.Field(&s.AppleAuth),
 	)
 }
 
@@ -251,6 +256,7 @@ func (s *Settings) RedactClone() (*Settings, error) {
 		&clone.OIDCAuth.ClientSecret,
 		&clone.OIDC2Auth.ClientSecret,
 		&clone.OIDC3Auth.ClientSecret,
+		&clone.AppleAuth.ClientSecret,
 	}
 
 	// mask all sensitive fields
@@ -287,6 +293,7 @@ func (s *Settings) NamedAuthProviderConfigs() map[string]AuthProviderConfig {
 		auth.NameOIDC:       s.OIDCAuth,
 		auth.NameOIDC + "2": s.OIDC2Auth,
 		auth.NameOIDC + "3": s.OIDC3Auth,
+		auth.NameApple:      s.AppleAuth,
 	}
 }
 

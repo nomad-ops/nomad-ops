@@ -129,6 +129,16 @@ func (api *recordAuthApi) authMethods(c echo.Context) error {
 		codeVerifier := security.RandomString(43)
 		codeChallenge := security.S256Challenge(codeVerifier)
 		codeChallengeMethod := "S256"
+		urlOpts := []oauth2.AuthCodeOption{
+			oauth2.SetAuthURLParam("code_challenge", codeChallenge),
+			oauth2.SetAuthURLParam("code_challenge_method", codeChallengeMethod),
+		}
+
+		if name == auth.NameApple {
+			// see https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_js/incorporating_sign_in_with_apple_into_other_platforms#3332113
+			urlOpts = append(urlOpts, oauth2.SetAuthURLParam("response_mode", "query"))
+		}
+
 		result.AuthProviders = append(result.AuthProviders, providerInfo{
 			Name:                name,
 			State:               state,
@@ -137,9 +147,8 @@ func (api *recordAuthApi) authMethods(c echo.Context) error {
 			CodeChallengeMethod: codeChallengeMethod,
 			AuthUrl: provider.BuildAuthUrl(
 				state,
-				oauth2.SetAuthURLParam("code_challenge", codeChallenge),
-				oauth2.SetAuthURLParam("code_challenge_method", codeChallengeMethod),
-			) + "&redirect_uri=", // empty redirect_uri so that users can append their url
+				urlOpts...,
+			) + "&redirect_uri=", // empty redirect_uri so that users can append their redirect url
 		})
 	}
 
@@ -168,10 +177,17 @@ func (api *recordAuthApi) authWithOAuth2(c echo.Context) error {
 		return NewBadRequestError("An error occurred while loading the submitted data.", readErr)
 	}
 
+	event := new(core.RecordAuthWithOAuth2Event)
+	event.HttpContext = c
+	event.Collection = collection
+	event.ProviderName = form.Provider
+	event.IsNewRecord = false
+
 	form.SetBeforeNewRecordCreateFunc(func(createForm *forms.RecordUpsert, authRecord *models.Record, authUser *auth.AuthUser) error {
 		return createForm.DrySubmit(func(txDao *daos.Dao) error {
 			requestData := RequestData(c)
 			requestData.Data = form.CreateData
+			event.IsNewRecord = true
 
 			createRuleFunc := func(q *dbx.SelectQuery) error {
 				admin, _ := c.Get(ContextAdminKey).(*models.Admin)
@@ -204,14 +220,11 @@ func (api *recordAuthApi) authWithOAuth2(c echo.Context) error {
 		})
 	})
 
-	event := new(core.RecordAuthWithOAuth2Event)
-	event.HttpContext = c
-	event.Collection = collection
-
 	_, _, submitErr := form.Submit(func(next forms.InterceptorNextFunc[*forms.RecordOAuth2LoginData]) forms.InterceptorNextFunc[*forms.RecordOAuth2LoginData] {
 		return func(data *forms.RecordOAuth2LoginData) error {
 			event.Record = data.Record
 			event.OAuth2User = data.OAuth2User
+			event.ProviderClient = data.ProviderClient
 
 			return api.app.OnRecordBeforeAuthWithOAuth2Request().Trigger(event, func(e *core.RecordAuthWithOAuth2Event) error {
 				data.Record = e.Record

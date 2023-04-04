@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
@@ -11,8 +12,6 @@ import (
 	"github.com/pocketbase/pocketbase/tools/mailer"
 	"github.com/pocketbase/pocketbase/tools/search"
 	"github.com/pocketbase/pocketbase/tools/subscriptions"
-
-	"github.com/labstack/echo/v5"
 )
 
 type BaseCollectionEvent struct {
@@ -206,9 +205,12 @@ type RecordAuthWithPasswordEvent struct {
 type RecordAuthWithOAuth2Event struct {
 	BaseCollectionEvent
 
-	HttpContext echo.Context
-	Record      *models.Record
-	OAuth2User  *auth.AuthUser
+	HttpContext    echo.Context
+	ProviderName   string
+	ProviderClient auth.Provider
+	Record         *models.Record
+	OAuth2User     *auth.AuthUser
+	IsNewRecord    bool
 }
 
 type RecordAuthRefreshEvent struct {

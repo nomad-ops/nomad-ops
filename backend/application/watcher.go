@@ -245,19 +245,31 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			case <-wi.ctx.Done():
 				return
 			}
+			syncStatus := wi.Source.Status
+			if syncStatus == nil {
+				syncStatus = &domain.SourceStatus{
+					Message: "Syncing",
+				}
+			}
+			syncStatus.Status = domain.SourceStatusStatusSyncing
+
+			err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, syncStatus)
+			if err != nil {
+				w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
+			}
 
 			desiredState, err := w.dsw.FetchDesiredState(wi.ctx, wi.Source)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not FetchDesiredState: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
+				err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+					Status:        domain.SourceStatusStatusError,
+					Message:       err.Error(),
+					LastCheckTime: toTimePtr(time.Now()),
+				})
+				if err != nil {
+					w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
+				}
 				if !hasError {
-					err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
-						Status:        domain.SourceStatusStatusError,
-						Message:       err.Error(),
-						LastCheckTime: toTimePtr(time.Now()),
-					})
-					if err != nil {
-						w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
-					}
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
 						Type:    NotificationError,
@@ -309,15 +321,15 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			err = w.applyOverrides(wi.ctx, wi.Source, desiredState)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not apply overrides: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
+				err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+					Status:        domain.SourceStatusStatusError,
+					Message:       err.Error(),
+					LastCheckTime: toTimePtr(time.Now()),
+				})
+				if err != nil {
+					w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
+				}
 				if !hasError {
-					err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
-						Status:        domain.SourceStatusStatusError,
-						Message:       err.Error(),
-						LastCheckTime: toTimePtr(time.Now()),
-					})
-					if err != nil {
-						w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
-					}
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
 						Type:    NotificationError,
@@ -365,15 +377,15 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			status, changeInfo, err := wi.Reconciler(wi.ctx, wi.Source, desiredState, restart)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not Reconcile: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
+				err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+					Status:        domain.SourceStatusStatusError,
+					Message:       err.Error(),
+					LastCheckTime: toTimePtr(time.Now()),
+				})
+				if err != nil {
+					w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
+				}
 				if !hasError {
-					err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
-						Status:        domain.SourceStatusStatusError,
-						Message:       err.Error(),
-						LastCheckTime: toTimePtr(time.Now()),
-					})
-					if err != nil {
-						w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
-					}
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
 						Type:    NotificationError,

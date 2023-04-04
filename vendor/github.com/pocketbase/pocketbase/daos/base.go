@@ -74,6 +74,13 @@ func (dao *Dao) NonconcurrentDB() dbx.Builder {
 	return dao.nonconcurrentDB
 }
 
+// Clone returns a new Dao with the same configuration options as the current one.
+func (dao *Dao) Clone() *Dao {
+	clone := *dao
+
+	return &clone
+}
+
 // ModelQuery creates a new preconfigured select query with preset
 // SELECT, FROM and other common fields based on the provided model.
 func (dao *Dao) ModelQuery(m models.Model) *dbx.SelectQuery {
@@ -110,6 +117,8 @@ func (dao *Dao) RunInTransaction(fn func(txDao *Dao) error) error {
 		// ---
 		// create a new dao with the same hooks to avoid semaphore deadlock when nesting
 		txDao := New(txOrDB)
+		txDao.MaxLockRetries = dao.MaxLockRetries
+		txDao.ModelQueryTimeout = dao.ModelQueryTimeout
 		txDao.BeforeCreateFunc = dao.BeforeCreateFunc
 		txDao.BeforeUpdateFunc = dao.BeforeUpdateFunc
 		txDao.BeforeDeleteFunc = dao.BeforeDeleteFunc
@@ -205,7 +214,10 @@ func (dao *Dao) Delete(m models.Model) error {
 	})
 }
 
-// Save upserts (update or create if primary key is not set) the provided model.
+// Save persists the provided model in the database.
+//
+// If m.IsNew() is true, the method will perform a create, otherwise an update.
+// To explicitly mark a model for update you can use m.MarkAsNotNew().
 func (dao *Dao) Save(m models.Model) error {
 	if m.IsNew() {
 		return dao.lockRetry(func(retryDao *Dao) error {

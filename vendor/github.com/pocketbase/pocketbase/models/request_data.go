@@ -12,6 +12,7 @@ type RequestData struct {
 	Method     string         `json:"method"`
 	Query      map[string]any `json:"query"`
 	Data       map[string]any `json:"data"`
+	Headers    map[string]any `json:"headers"`
 	AuthRecord *Record        `json:"authRecord"`
 	Admin      *Admin         `json:"admin"`
 }

@@ -247,9 +247,9 @@ func (dao *Dao) IsRecordValueUnique(
 		var normalizedVal any
 		switch val := value.(type) {
 		case []string:
-			normalizedVal = append(types.JsonArray{}, list.ToInterfaceSlice(val)...)
+			normalizedVal = append(types.JsonArray[string]{}, val...)
 		case []any:
-			normalizedVal = append(types.JsonArray{}, val...)
+			normalizedVal = append(types.JsonArray[any]{}, val...)
 		default:
 			normalizedVal = val
 		}
@@ -386,7 +386,10 @@ func (dao *Dao) SuggestUniqueAuthRecordUsername(
 	return username
 }
 
-// SaveRecord upserts the provided Record model.
+// SaveRecord persists the provided Record model in the database.
+//
+// If record.IsNew() is true, the method will perform a create, otherwise an update.
+// To explicitly mark a record for update you can use record.MarkAsNotNew().
 func (dao *Dao) SaveRecord(record *models.Record) error {
 	if record.Collection().IsAuth() {
 		if record.Username() == "" {
@@ -472,14 +475,16 @@ func (dao *Dao) cascadeRecordDelete(mainRecord *models.Record, refs map[*models.
 			recordTableName := inflector.Columnify(refCollection.Name)
 			prefixedFieldName := recordTableName + "." + inflector.Columnify(field.Name)
 
-			// @todo optimize single relation lookup
-			query := dao.RecordQuery(refCollection).
-				Distinct(true).
-				InnerJoin(fmt.Sprintf(
-					// note: the case is used to normalize the value access
+			query := dao.RecordQuery(refCollection).Distinct(true)
+
+			if opt, ok := field.Options.(schema.MultiValuer); !ok || !opt.IsMultiple() {
+				query.AndWhere(dbx.HashExp{prefixedFieldName: mainRecord.Id})
+			} else {
+				query.InnerJoin(fmt.Sprintf(
 					`json_each(CASE WHEN json_valid([[%s]]) THEN [[%s]] ELSE json_array([[%s]]) END) as {{%s}}`,
 					prefixedFieldName, prefixedFieldName, prefixedFieldName, uniqueJsonEachAlias,
 				), dbx.HashExp{uniqueJsonEachAlias + ".value": mainRecord.Id})
+			}
 
 			if refCollection.Id == mainRecord.Collection().Id {
 				query.AndWhere(dbx.Not(dbx.HashExp{recordTableName + ".id": mainRecord.Id}))

@@ -740,14 +740,46 @@ func (form *RecordUpsert) Submit(interceptors ...InterceptorFunc[*models.Record]
 			form.record.MarkAsNew()
 		}
 
-		// persist the record model
-		if saveErr := form.dao.SaveRecord(form.record); saveErr != nil {
-			return fmt.Errorf("failed to save the record: %w", saveErr)
-		}
+		dao := form.dao.Clone()
 
 		// upload new files (if any)
-		if err := form.processFilesToUpload(); err != nil {
-			return fmt.Errorf("failed to process the uploaded files: %w", err)
+		//
+		// note: executed after the default BeforeCreateFunc and BeforeUpdateFunc hooks
+		// to allow uploading AFTER the before app model hooks (eg. in case of an id change)
+		// but BEFORE the actual record db persistence
+		// ---
+		dao.BeforeCreateFunc = func(eventDao *daos.Dao, m models.Model) error {
+			if err := form.dao.BeforeCreateFunc(eventDao, m); err != nil {
+				return err
+			}
+
+			if m.GetId() == form.record.GetId() {
+				return form.processFilesToUpload()
+			}
+
+			return nil
+		}
+
+		dao.BeforeUpdateFunc = func(eventDao *daos.Dao, m models.Model) error {
+			if err := form.dao.BeforeUpdateFunc(eventDao, m); err != nil {
+				return err
+			}
+
+			if m.GetId() == form.record.GetId() {
+				return form.processFilesToUpload()
+			}
+
+			return nil
+		}
+		// ---
+
+		// persist the record model
+		if err := dao.SaveRecord(form.record); err != nil {
+			preparedErr := form.prepareError(err)
+			if _, ok := preparedErr.(validation.Errors); ok {
+				return preparedErr
+			}
+			return fmt.Errorf("failed to save the record: %w", err)
 		}
 
 		// delete old files (if any)
@@ -768,7 +800,7 @@ func (form *RecordUpsert) processFilesToUpload() error {
 	}
 
 	if !form.record.HasId() {
-		return errors.New("the record is not persisted yet")
+		return errors.New("the record doesn't have an id")
 	}
 
 	fs, err := form.app.NewFilesystem()
@@ -816,7 +848,7 @@ func (form *RecordUpsert) deleteFilesByNamesList(filenames []string) ([]string, 
 	}
 
 	if !form.record.HasId() {
-		return filenames, errors.New("the record doesn't have a unique ID")
+		return filenames, errors.New("the record doesn't have an id")
 	}
 
 	fs, err := form.app.NewFilesystem()
@@ -848,4 +880,31 @@ func (form *RecordUpsert) deleteFilesByNamesList(filenames []string) ([]string, 
 	}
 
 	return filenames, nil
+}
+
+// prepareError parses the provided error and tries to return
+// user-friendly validation error(s).
+func (form *RecordUpsert) prepareError(err error) error {
+	msg := strings.ToLower(err.Error())
+
+	validationErrs := validation.Errors{}
+
+	// check for unique constraint failure
+	if strings.Contains(msg, "unique constraint failed") {
+		msg = strings.ReplaceAll(strings.TrimSpace(msg), ",", " ")
+
+		c := form.record.Collection()
+		for _, f := range c.Schema.Fields() {
+			// blank space to unify multi-columns lookup
+			if strings.Contains(msg+" ", fmt.Sprintf("%s.%s ", strings.ToLower(c.Name), f.Name)) {
+				validationErrs[f.Name] = validation.NewError("validation_not_unique", "Value must be unique")
+			}
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
+	}
+
+	return err
 }

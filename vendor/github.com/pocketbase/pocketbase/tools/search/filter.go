@@ -107,9 +107,9 @@ func buildExpr(
 
 	switch op {
 	case fexpr.SignEq, fexpr.SignAnyEq:
-		expr = dbx.NewExp(fmt.Sprintf("COALESCE(%s, '') = COALESCE(%s, '')", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
+		expr = resolveEqualExpr(true, left, right)
 	case fexpr.SignNeq, fexpr.SignAnyNeq:
-		expr = dbx.NewExp(fmt.Sprintf("COALESCE(%s, '') != COALESCE(%s, '')", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
+		expr = resolveEqualExpr(false, left, right)
 	case fexpr.SignLike, fexpr.SignAnyLike:
 		// the right side is a column and therefor wrap it with "%" for contains like behavior
 		if len(right.Params) == 0 {
@@ -230,6 +230,110 @@ func resolveToken(token fexpr.Token, fieldResolver FieldResolver) (*ResolverResu
 	}
 
 	return nil, errors.New("unresolvable token type")
+}
+
+// Resolves = and != expressions in an attempt to minimize the COALESCE
+// usage and to gracefully handle null vs empty string normalizations.
+//
+// The expression `a = "" OR a is null` tends to perform better than
+// `COALESCE(a, "") = ""` since the direct match can be accomplished
+// with a seek while the COALESCE will induce a table scan.
+func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
+	isLeftEmpty := isEmptyIdentifier(left) || (len(left.Params) == 1 && hasEmptyParamValue(left))
+	isRightEmpty := isEmptyIdentifier(right) || (len(right.Params) == 1 && hasEmptyParamValue(right))
+
+	equalOp := "="
+	concatOp := "OR"
+	nullExpr := "IS NULL"
+	if !equal {
+		equalOp = "!="
+		concatOp = "AND"
+		nullExpr = "IS NOT NULL"
+	}
+
+	// both operands are empty
+	if isLeftEmpty && isRightEmpty {
+		return dbx.NewExp(fmt.Sprintf("'' %s ''", equalOp), mergeParams(left.Params, right.Params))
+	}
+
+	// direct compare since at least one of the operands is known to be non-empty
+	// eg. a = 'example'
+	if isKnownNonEmptyIdentifier(left) || isKnownNonEmptyIdentifier(right) {
+		leftIdentifier := left.Identifier
+		if isLeftEmpty {
+			leftIdentifier = "''"
+		}
+		rightIdentifier := right.Identifier
+		if isRightEmpty {
+			rightIdentifier = "''"
+		}
+		return dbx.NewExp(
+			fmt.Sprintf("%s %s %s", leftIdentifier, equalOp, rightIdentifier),
+			mergeParams(left.Params, right.Params),
+		)
+	}
+
+	// "" = b OR b IS NULL
+	// "" != b AND b IS NOT NULL
+	if isLeftEmpty {
+		return dbx.NewExp(
+			fmt.Sprintf("('' %s %s %s %s %s)", equalOp, right.Identifier, concatOp, right.Identifier, nullExpr),
+			mergeParams(left.Params, right.Params),
+		)
+	}
+
+	// a = "" OR a IS NULL
+	// a != "" AND a IS NOT NULL
+	if isRightEmpty {
+		return dbx.NewExp(
+			fmt.Sprintf("(%s %s '' %s %s %s)", left.Identifier, equalOp, concatOp, left.Identifier, nullExpr),
+			mergeParams(left.Params, right.Params),
+		)
+	}
+
+	// fallback to a COALESCE comparison
+	return dbx.NewExp(
+		fmt.Sprintf(
+			"COALESCE(%s, '') %s COALESCE(%s, '')",
+			left.Identifier,
+			equalOp,
+			right.Identifier,
+		),
+		mergeParams(left.Params, right.Params),
+	)
+}
+
+func hasEmptyParamValue(result *ResolverResult) bool {
+	for _, p := range result.Params {
+		switch v := p.(type) {
+		case nil:
+			return true
+		case string:
+			if v == "" {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func isKnownNonEmptyIdentifier(result *ResolverResult) bool {
+	switch strings.ToLower(result.Identifier) {
+	case "1", "0", "false", `true`:
+		return true
+	}
+
+	return len(result.Params) > 0 && !hasEmptyParamValue(result) && !isEmptyIdentifier(result)
+}
+
+func isEmptyIdentifier(result *ResolverResult) bool {
+	switch strings.ToLower(result.Identifier) {
+	case "", "null", "''", `""`, "``":
+		return true
+	default:
+		return false
+	}
 }
 
 func isAnyMatchOp(op fexpr.SignOp) bool {
