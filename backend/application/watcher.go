@@ -77,10 +77,10 @@ type SyncSourceOptions struct {
 func (w *RepoWatcher) SyncSourceByID(ctx context.Context, id string, opts SyncSourceOptions) error {
 	w.lock.Lock()
 	wi, ok := w.watchList[id]
+	w.lock.Unlock()
 	if !ok {
 		return errors.ErrNotFound
 	}
-	w.lock.Unlock()
 	w.logger.LogInfo(ctx, "Syncing repo %s on branch %s", wi.Source.URL, wi.Source.Branch)
 	err := wi.syncFunc(ctx, opts)
 	if err != nil {
@@ -129,10 +129,10 @@ func (w *RepoWatcher) UpdateSource(ctx context.Context, src *domain.Source) erro
 	w.logger.LogInfo(ctx, "Updating source %s", src.Name)
 	w.lock.Lock()
 	wi, ok := w.watchList[src.ID]
+	w.lock.Unlock()
 	if !ok {
 		return errors.ErrNotFound
 	}
-	w.lock.Unlock()
 	err := wi.updateFunc(ctx, src)
 	if err != nil {
 		return err

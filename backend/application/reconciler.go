@@ -225,7 +225,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			err = r.notifier.Notify(ctx, NotifyOptions{
 				Source:  src,
 				Type:    NotificationSuccess,
-				Message: fmt.Sprintf("Updated Job:%v", job.Job.Name),
+				Message: fmt.Sprintf("Updated Job:%v", strPtrToStr(job.Job.Name)),
 				Infos: []NotifyAdditionalInfos{
 					{
 						Header: "Git-Commit",
