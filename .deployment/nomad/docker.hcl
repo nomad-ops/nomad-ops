@@ -20,7 +20,10 @@ job "nomad-ops" {
     count = 1
 
     network {
-      port "http" {}
+      mode = "host"
+      port "http" {
+        static = 8080
+      }
     }
 
     service {
@@ -63,7 +66,7 @@ job "nomad-ops" {
         NOMAD_OPS_LOCAL_REPO_DIR = "/data/repos"
 
         # Adjust accordingly
-        NOMAD_ADDR = "http://127.0.0.1:4646"
+        NOMAD_ADDR = "http://host.docker.internal:4646"
         # comment and provide a NOMAD_TOKEN instead
         NOMAD_TOKEN_FILE = "${NOMAD_SECRETS_DIR}/nomad_token"
         
@@ -72,7 +75,7 @@ job "nomad-ops" {
 
       # Configuration is specific to each driver.
       config {
-        image = "ghcr.io/nomad-ops/nomad-ops:latest"
+        image = "ghcr.io/nomad-ops/nomad-ops:main"
         args = [
           "serve",
           "--http", "0.0.0.0:${NOMAD_PORT_http}",
