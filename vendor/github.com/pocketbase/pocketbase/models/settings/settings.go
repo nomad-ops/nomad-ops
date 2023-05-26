@@ -10,6 +10,7 @@ import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/go-ozzo/ozzo-validation/v4/is"
 	"github.com/pocketbase/pocketbase/tools/auth"
+	"github.com/pocketbase/pocketbase/tools/cron"
 	"github.com/pocketbase/pocketbase/tools/mailer"
 	"github.com/pocketbase/pocketbase/tools/rest"
 	"github.com/pocketbase/pocketbase/tools/security"
@@ -23,17 +24,20 @@ const SecretMask string = "******"
 type Settings struct {
 	mux sync.RWMutex
 
-	Meta MetaConfig `form:"meta" json:"meta"`
-	Logs LogsConfig `form:"logs" json:"logs"`
-	Smtp SmtpConfig `form:"smtp" json:"smtp"`
-	S3   S3Config   `form:"s3" json:"s3"`
+	Meta    MetaConfig    `form:"meta" json:"meta"`
+	Logs    LogsConfig    `form:"logs" json:"logs"`
+	Smtp    SmtpConfig    `form:"smtp" json:"smtp"`
+	S3      S3Config      `form:"s3" json:"s3"`
+	Backups BackupsConfig `form:"backups" json:"backups"`
 
 	AdminAuthToken           TokenConfig `form:"adminAuthToken" json:"adminAuthToken"`
 	AdminPasswordResetToken  TokenConfig `form:"adminPasswordResetToken" json:"adminPasswordResetToken"`
+	AdminFileToken           TokenConfig `form:"adminFileToken" json:"adminFileToken"`
 	RecordAuthToken          TokenConfig `form:"recordAuthToken" json:"recordAuthToken"`
 	RecordPasswordResetToken TokenConfig `form:"recordPasswordResetToken" json:"recordPasswordResetToken"`
 	RecordEmailChangeToken   TokenConfig `form:"recordEmailChangeToken" json:"recordEmailChangeToken"`
 	RecordVerificationToken  TokenConfig `form:"recordVerificationToken" json:"recordVerificationToken"`
+	RecordFileToken          TokenConfig `form:"recordFileToken" json:"recordFileToken"`
 
 	// Deprecated: Will be removed in v0.9+
 	EmailAuth EmailAuthConfig `form:"emailAuth" json:"emailAuth"`
@@ -82,29 +86,40 @@ func New() *Settings {
 			Password: "",
 			Tls:      false,
 		},
+		Backups: BackupsConfig{
+			CronMaxKeep: 3,
+		},
 		AdminAuthToken: TokenConfig{
 			Secret:   security.RandomString(50),
-			Duration: 1209600, // 14 days,
+			Duration: 1209600, // 14 days
 		},
 		AdminPasswordResetToken: TokenConfig{
 			Secret:   security.RandomString(50),
-			Duration: 1800, // 30 minutes,
+			Duration: 1800, // 30 minutes
+		},
+		AdminFileToken: TokenConfig{
+			Secret:   security.RandomString(50),
+			Duration: 120, // 2 minutes
 		},
 		RecordAuthToken: TokenConfig{
 			Secret:   security.RandomString(50),
-			Duration: 1209600, // 14 days,
+			Duration: 1209600, // 14 days
 		},
 		RecordPasswordResetToken: TokenConfig{
 			Secret:   security.RandomString(50),
-			Duration: 1800, // 30 minutes,
+			Duration: 1800, // 30 minutes
 		},
 		RecordVerificationToken: TokenConfig{
 			Secret:   security.RandomString(50),
-			Duration: 604800, // 7 days,
+			Duration: 604800, // 7 days
+		},
+		RecordFileToken: TokenConfig{
+			Secret:   security.RandomString(50),
+			Duration: 120, // 2 minutes
 		},
 		RecordEmailChangeToken: TokenConfig{
 			Secret:   security.RandomString(50),
-			Duration: 1800, // 30 minutes,
+			Duration: 1800, // 30 minutes
 		},
 		GoogleAuth: AuthProviderConfig{
 			Enabled: false,
@@ -173,12 +188,15 @@ func (s *Settings) Validate() error {
 		validation.Field(&s.Logs),
 		validation.Field(&s.AdminAuthToken),
 		validation.Field(&s.AdminPasswordResetToken),
+		validation.Field(&s.AdminFileToken),
 		validation.Field(&s.RecordAuthToken),
 		validation.Field(&s.RecordPasswordResetToken),
 		validation.Field(&s.RecordEmailChangeToken),
 		validation.Field(&s.RecordVerificationToken),
+		validation.Field(&s.RecordFileToken),
 		validation.Field(&s.Smtp),
 		validation.Field(&s.S3),
+		validation.Field(&s.Backups),
 		validation.Field(&s.GoogleAuth),
 		validation.Field(&s.FacebookAuth),
 		validation.Field(&s.GithubAuth),
@@ -233,12 +251,15 @@ func (s *Settings) RedactClone() (*Settings, error) {
 	sensitiveFields := []*string{
 		&clone.Smtp.Password,
 		&clone.S3.Secret,
+		&clone.Backups.S3.Secret,
 		&clone.AdminAuthToken.Secret,
 		&clone.AdminPasswordResetToken.Secret,
+		&clone.AdminFileToken.Secret,
 		&clone.RecordAuthToken.Secret,
 		&clone.RecordPasswordResetToken.Secret,
 		&clone.RecordEmailChangeToken.Secret,
 		&clone.RecordVerificationToken.Secret,
+		&clone.RecordFileToken.Secret,
 		&clone.GoogleAuth.ClientSecret,
 		&clone.FacebookAuth.ClientSecret,
 		&clone.GithubAuth.ClientSecret,
@@ -375,6 +396,51 @@ func (c S3Config) Validate() error {
 		validation.Field(&c.AccessKey, validation.When(c.Enabled, validation.Required)),
 		validation.Field(&c.Secret, validation.When(c.Enabled, validation.Required)),
 	)
+}
+
+// -------------------------------------------------------------------
+
+type BackupsConfig struct {
+	// Cron is a cron expression to schedule auto backups, eg. "* * * * *".
+	//
+	// Leave it empty to disable the auto backups functionality.
+	Cron string `form:"cron" json:"cron"`
+
+	// CronMaxKeep is the the max number of cron generated backups to
+	// keep before removing older entries.
+	//
+	// This field works only when the cron config has valid cron expression.
+	CronMaxKeep int `form:"cronMaxKeep" json:"cronMaxKeep"`
+
+	// S3 is an optional S3 storage config specifying where to store the app backups.
+	S3 S3Config `form:"s3" json:"s3"`
+}
+
+// Validate makes BackupsConfig validatable by implementing [validation.Validatable] interface.
+func (c BackupsConfig) Validate() error {
+	return validation.ValidateStruct(&c,
+		validation.Field(&c.S3),
+		validation.Field(&c.Cron, validation.By(checkCronExpression)),
+		validation.Field(
+			&c.CronMaxKeep,
+			validation.When(c.Cron != "", validation.Required),
+			validation.Min(1),
+		),
+	)
+}
+
+func checkCronExpression(value any) error {
+	v, _ := value.(string)
+	if v == "" {
+		return nil // nothing to check
+	}
+
+	_, err := cron.NewSchedule(v)
+	if err != nil {
+		return validation.NewError("validation_invalid_cron", err.Error())
+	}
+
+	return nil
 }
 
 // -------------------------------------------------------------------

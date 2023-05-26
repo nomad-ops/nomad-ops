@@ -4,6 +4,8 @@
 package core
 
 import (
+	"context"
+
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models/settings"
@@ -69,11 +71,19 @@ type App interface {
 	// NewMailClient creates and returns a configured app mail client.
 	NewMailClient() mailer.Mailer
 
-	// NewFilesystem creates and returns a configured filesystem.System instance.
+	// NewFilesystem creates and returns a configured filesystem.System instance
+	// for managing regular app files (eg. collection uploads).
 	//
 	// NB! Make sure to call `Close()` on the returned result
 	// after you are done working with it.
 	NewFilesystem() (*filesystem.System, error)
+
+	// NewBackupsFilesystem creates and returns a configured filesystem.System instance
+	// for managing app backups.
+	//
+	// NB! Make sure to call `Close()` on the returned result
+	// after you are done working with it.
+	NewBackupsFilesystem() (*filesystem.System, error)
 
 	// RefreshSettings reinitializes and reloads the stored application settings.
 	RefreshSettings() error
@@ -91,6 +101,31 @@ type App interface {
 	// ResetBootstrapState takes care for releasing initialized app resources
 	// (eg. closing db connections).
 	ResetBootstrapState() error
+
+	// CreateBackup creates a new backup of the current app pb_data directory.
+	//
+	// Backups can be stored on S3 if it is configured in app.Settings().Backups.
+	//
+	// Please refer to the godoc of the specific core.App implementation
+	// for details on the backup procedures.
+	CreateBackup(ctx context.Context, name string) error
+
+	// RestoreBackup restores the backup with the specified name and restarts
+	// the current running application process.
+	//
+	// The safely perform the restore it is recommended to have free disk space
+	// for at least 2x the size of the restored pb_data backup.
+	//
+	// Please refer to the godoc of the specific core.App implementation
+	// for details on the restore procedures.
+	//
+	// NB! This feature is experimental and currently is expected to work only on UNIX based systems.
+	RestoreBackup(ctx context.Context, name string) error
+
+	// Restart restarts the current running application process.
+	//
+	// Currently it is relying on execve so it is supported only on UNIX based systems.
+	Restart() error
 
 	// ---------------------------------------------------------------
 	// App event hooks
@@ -117,6 +152,10 @@ type App interface {
 	// response to the client.
 	// It could be used to log the final API error in external services.
 	OnAfterApiError() *hook.Hook[*ApiErrorEvent]
+
+	// OnTerminate hook is triggered when the app is in the process
+	// of being terminated (eg. on SIGTERM signal).
+	OnTerminate() *hook.Hook[*TerminateEvent]
 
 	// ---------------------------------------------------------------
 	// Dao event hooks
@@ -306,6 +345,25 @@ type App interface {
 	// Could be used to validate or modify the file response before
 	// returning it to the client.
 	OnFileDownloadRequest(tags ...string) *hook.TaggedHook[*FileDownloadEvent]
+
+	// OnFileBeforeTokenRequest hook is triggered before each file
+	// token API request.
+	//
+	// If no token or model was submitted, e.Model and e.Token will be empty,
+	// allowing you to implement your own custom model file auth implementation.
+	//
+	// If the optional "tags" list (Collection ids or names) is specified,
+	// then all event handlers registered via the created hook will be
+	// triggered and called only if their event data origin matches the tags.
+	OnFileBeforeTokenRequest(tags ...string) *hook.TaggedHook[*FileTokenEvent]
+
+	// OnFileAfterTokenRequest hook is triggered after each
+	// successful file token API request.
+	//
+	// If the optional "tags" list (Collection ids or names) is specified,
+	// then all event handlers registered via the created hook will be
+	// triggered and called only if their event data origin matches the tags.
+	OnFileAfterTokenRequest(tags ...string) *hook.TaggedHook[*FileTokenEvent]
 
 	// ---------------------------------------------------------------
 	// Admin API event hooks
