@@ -43,8 +43,9 @@ type RepoWatcher struct {
 }
 
 type RepoWatcherConfig struct {
-	Interval time.Duration
-	AppName  string
+	Interval        time.Duration
+	ErrorRetryCount int
+	AppName         string
 }
 
 type SourceStatusPatcher interface {
@@ -210,7 +211,8 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			}
 		}()
 
-		hasError := false
+		//hasError := false
+		errorCount := 0
 		firstRun := true
 
 		metrics.GetOrCreateCounter("nomad_ops_watched_repos_gauge" +
@@ -231,7 +233,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 					fmt.Sprintf(`{app="%s",repo_url="%s",repo_branch="%s",nomad_namespace="%s",nomad_dc="%s",key_id="%s",repo_path="%s",has_error="%v"}`,
 						w.cfg.AppName, wi.Source.URL, wi.Source.Branch,
 						wi.Source.Namespace, wi.Source.DataCenter,
-						wi.Source.DeployKeyID, wi.Source.Path, hasError)).Inc()
+						wi.Source.DeployKeyID, wi.Source.Path, errorCount != 0)).Inc()
 			}
 			firstRun = false
 			restart := false
@@ -269,7 +271,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				if err != nil {
 					w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 				}
-				if !hasError {
+				if errorCount == w.cfg.ErrorRetryCount {
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
 						Type:    NotificationError,
@@ -314,7 +316,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 						w.logger.LogError(ctx, "Could not notify:%v", err)
 					}
 				}
-				hasError = true
+				errorCount++
 				continue
 			}
 
@@ -329,7 +331,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				if err != nil {
 					w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 				}
-				if !hasError {
+				if errorCount == w.cfg.ErrorRetryCount {
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
 						Type:    NotificationError,
@@ -370,7 +372,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 						w.logger.LogError(ctx, "Could not notify:%v", err)
 					}
 				}
-				hasError = true
+				errorCount++
 				continue
 			}
 
@@ -385,7 +387,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				if err != nil {
 					w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 				}
-				if !hasError {
+				if errorCount == w.cfg.ErrorRetryCount {
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
 						Type:    NotificationError,
@@ -430,11 +432,11 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 						w.logger.LogError(ctx, "Could not notify:%v", err)
 					}
 				}
-				hasError = true
+				errorCount++
 				continue
 			}
-			if hasError {
-				hasError = false
+			if errorCount > 0 {
+				errorCount = 0
 				err = w.notifier.Notify(ctx, NotifyOptions{
 					Source:  wi.Source,
 					Type:    NotificationSuccess,
