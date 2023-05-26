@@ -201,8 +201,9 @@ func main() {
 		watcher, err := application.CreateRepoWatcher(ctx,
 			log.NewSimpleLogger(trace, "RepoWatcher"),
 			application.RepoWatcherConfig{
-				Interval: env.GetDurationEnv(ctx, logger, "NOMAD_OPS_POLLING_INTERVAL", 60*time.Second),
-				AppName:  env.GetStringEnv(ctx, logger, "APP_NAME", "nomad-ops"),
+				Interval:        env.GetDurationEnv(ctx, logger, "NOMAD_OPS_POLLING_INTERVAL", 60*time.Second),
+				ErrorRetryCount: env.GetIntEnv(ctx, logger, "NOMAD_OPS_ERROR_RETRY_COUNT", 2),
+				AppName:         env.GetStringEnv(ctx, logger, "APP_NAME", "nomad-ops"),
 			},
 			srcStore,
 			dsw,
