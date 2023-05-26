@@ -10,6 +10,7 @@ import (
 	// v1 "github.com/hashicorp/nomad-openapi/v1"
 
 	"github.com/hashicorp/nomad/api"
+	"github.com/hashicorp/nomad/jobspec2"
 
 	"github.com/nomad-ops/nomad-ops/backend/application"
 	"github.com/nomad-ops/nomad-ops/backend/domain"
@@ -163,13 +164,20 @@ func hasUpdate(diffResp *api.JobPlanResponse, restart, force bool) bool {
 }
 
 func (c *Client) ParseJob(ctx context.Context, j string) (*application.JobInfo, error) {
-	parsedJob, err := c.client.Jobs().ParseHCL(j, false)
+
+	pJob, err := jobspec2.ParseWithConfig(&jobspec2.ParseConfig{
+		Path:    "",
+		Body:    []byte(j),
+		AllowFS: true,
+		ArgVars: nil,
+		Strict:  true,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	return &application.JobInfo{
-		Job: parsedJob,
+		Job: pJob,
 	}, nil
 }
 
