@@ -368,15 +368,19 @@ func realUserIp(r *http.Request, fallbackIp string) string {
 		return ip
 	}
 
+	if ip := r.Header.Get("Fly-Client-IP"); ip != "" {
+		return ip
+	}
+
 	if ip := r.Header.Get("X-Real-IP"); ip != "" {
 		return ip
 	}
 
 	if ipsList := r.Header.Get("X-Forwarded-For"); ipsList != "" {
+		// extract the first non-empty leftmost-ish ip
 		ips := strings.Split(ipsList, ",")
-		// extract the rightmost ip
-		for i := len(ips) - 1; i >= 0; i-- {
-			ip := strings.TrimSpace(ips[i])
+		for _, ip := range ips {
+			ip = strings.TrimSpace(ip)
 			if ip != "" {
 				return ip
 			}
@@ -384,4 +388,20 @@ func realUserIp(r *http.Request, fallbackIp string) string {
 	}
 
 	return fallbackIp
+}
+
+// eagerRequestDataCache ensures that the request data is cached in the request
+// context to allow reading for example the json request body data more than once.
+func eagerRequestDataCache(app core.App) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			switch c.Request().Method {
+			// currently we are eagerly caching only the requests with body
+			case "POST", "PUT", "PATCH", "DELETE":
+				RequestData(c)
+			}
+
+			return next(c)
+		}
+	}
 }

@@ -5,10 +5,11 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/pocketbase/pocketbase/tools/store"
 	"github.com/spf13/cast"
 )
 
-var cachedPatterns = map[string]*regexp.Regexp{}
+var cachedPatterns = store.New[*regexp.Regexp](nil)
 
 // SubtractSlice returns a new slice with only the "base" elements
 // that don't exist in "subtract".
@@ -26,9 +27,6 @@ func SubtractSlice[T comparable](base []T, subtract []T) []T {
 
 // ExistInSlice checks whether a comparable element exists in a slice of the same type.
 func ExistInSlice[T comparable](item T, list []T) bool {
-	if len(list) == 0 {
-		return false
-	}
 
 	for _, v := range list {
 		if v == item {
@@ -56,15 +54,18 @@ func ExistInSliceWithRegex(str string, list []string) bool {
 		}
 
 		// check for regex match
-		pattern, ok := cachedPatterns[field]
-		if !ok {
+		pattern := cachedPatterns.Get(field)
+		if pattern == nil {
 			var err error
 			pattern, err = regexp.Compile(field)
 			if err != nil {
 				continue
 			}
 			// "cache" the pattern to avoid compiling it every time
-			cachedPatterns[field] = pattern
+			// (the limit size is arbitrary and it is there to prevent the cache growing too big)
+			//
+			// @todo consider replacing with TTL or LRU type cache
+			cachedPatterns.SetIfLessThanLimit(field, pattern, 5000)
 		}
 
 		if pattern != nil && pattern.MatchString(str) {
