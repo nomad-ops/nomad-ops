@@ -428,7 +428,7 @@ export default function Sources() {
                                                 secondary={
                                                     <React.Fragment>
                                                         <Typography
-                                                            sx={{ display: 'inline' }}
+                                                            sx={{ display: 'inline', wordBreak: 'break-all' }}
                                                             component="span"
                                                             variant="body2"
                                                             color="text.primary"
