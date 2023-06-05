@@ -1,6 +1,21 @@
-## v0.16.2
+## v0.16.4
 
-> _To update the prebuilt executable you can run `./pocketbase update`._
+- Fixed the selfupdate command not working on Windows due to missing `.exe` in the extracted binary path ([#2589](https://github.com/pocketbase/pocketbase/discussions/2589)).
+  _Note that the command on Windows will work on v0.16.4+ onwards, meaning that you still will have to update manually one more time to v0.16.4._
+
+- Added `int64`, `int32`, `uint`, `uint64` and `uint32` support when scanning `types.DateTime` ([#2602](https://github.com/pocketbase/pocketbase/discussions/2602))
+
+- Updated dependencies.
+
+
+## v0.16.3
+
+- Fixed schema fields sort not working on Safari/Gnome Web ([#2567](https://github.com/pocketbase/pocketbase/issues/2567)).
+
+- Fixed default `PRAGMA`s not being applied for new connections ([#2570](https://github.com/pocketbase/pocketbase/discussions/2570)).
+
+
+## v0.16.2
 
 - Fixed backups archive not excluding the local `backups` directory on Windows ([#2548](https://github.com/pocketbase/pocketbase/discussions/2548#discussioncomment-5979712)).
 
@@ -12,8 +27,6 @@
 
 
 ## v0.16.1
-
-> _To update the prebuilt executable you can run `./pocketbase update`._
 
 - Fixed backup restore not working in a container environment when `pb_data` is mounted as volume ([#2519](https://github.com/pocketbase/pocketbase/issues/2519)).
 

@@ -184,17 +184,57 @@ func main() {
 			os.Exit(-2)
 		}
 
-		slackNotifier, err := notifier.CreateSlack(ctx,
-			log.NewSimpleLogger(trace, "Slack-Notifier"),
-			notifier.SlackConfig{
-				WebhookURL:  env.GetStringEnv(ctx, logger, "SLACK_WEBHOOK_URL", ""),
-				BaseURL:     env.GetStringEnv(ctx, logger, "SLACK_BASE_URL", "localhost:3000/ui/sources/"),
-				IconSuccess: env.GetStringEnv(ctx, logger, "SLACK_ICON_SUCCESS", ":check:"),
-				IconError:   env.GetStringEnv(ctx, logger, "SLACK_ICON_ERROR", ":check-no:"),
-				EnvInfoText: env.GetStringEnv(ctx, logger, "SLACK_ENV_INFO_TEXT", "Sent by nomad-ops (dev)"),
+		getNotifiers := func() map[string]application.Notifier {
+			res := map[string]application.Notifier{}
+
+			if slackWebhookURL := env.GetStringEnv(ctx, logger, "SLACK_WEBHOOK_URL", ""); slackWebhookURL != "" {
+				slackNotifier, err := notifier.CreateSlack(ctx,
+					log.NewSimpleLogger(trace, "Slack-Notifier"),
+					notifier.SlackConfig{
+						WebhookURL:  slackWebhookURL,
+						BaseURL:     env.GetStringEnv(ctx, logger, "SLACK_BASE_URL", "localhost:3000/ui/sources/"),
+						IconSuccess: env.GetStringEnv(ctx, logger, "SLACK_ICON_SUCCESS", ":check:"),
+						IconError:   env.GetStringEnv(ctx, logger, "SLACK_ICON_ERROR", ":check-no:"),
+						EnvInfoText: env.GetStringEnv(ctx, logger, "SLACK_ENV_INFO_TEXT", "Sent by nomad-ops (dev)"),
+					})
+				if err != nil {
+					logger.LogError(ctx, "Could not CreateSlack:%v", err)
+					os.Exit(-2)
+				}
+				res["slack"] = slackNotifier
+			}
+
+			if webhookURL := env.GetStringEnv(ctx, logger, "WEBHOOK_URL", ""); webhookURL != "" {
+				webhookNotifier, err := notifier.CreateWebhook(ctx,
+					log.NewSimpleLogger(trace, "Webhook-Notifier"),
+					notifier.WebhookConfig{
+						WebhookURL:          webhookURL,
+						Timeout:             env.GetDurationEnv(ctx, logger, "WEBHOOK_TIMEOUT", 10*time.Second),
+						Method:              env.GetStringEnv(ctx, logger, "WEBHOOK_METHOD", ""),
+						Insecure:            env.GetStringEnv(ctx, logger, "WEBHOOK_INSECURE", "FALSE") == "TRUE",
+						LogTemplateResults:  env.GetStringEnv(ctx, logger, "WEBHOOK_LOG_TEMPLATE_RESULTS", "FALSE") == "TRUE",
+						AuthHeaderName:      env.GetStringEnv(ctx, logger, "WEBHOOK_AUTH_HEADER_NAME", ""),
+						AuthHeaderValue:     ReadFromFile(ctx, logger, "WEBHOOK_AUTH_HEADER_VALUE_FILE", ""),
+						BodyTemplate:        ReadFromFile(ctx, logger, "WEBHOOK_BODY_TEMPLATE_FILE", ""),
+						QueryParamsTemplate: ReadFromFile(ctx, logger, "WEBHOOK_QUERY_TEMPLATE_FILE", ""),
+					})
+				if err != nil {
+					logger.LogError(ctx, "Could not CreateWebhook:%v", err)
+					os.Exit(-2)
+				}
+				res["webhook"] = webhookNotifier
+			}
+
+			return res
+		}
+
+		notificationComposer, err := notifier.CreateComposer(ctx,
+			log.NewSimpleLogger(trace, "Notification-Composer"),
+			notifier.ComposerConfig{
+				Notifiers: getNotifiers(),
 			})
 		if err != nil {
-			logger.LogError(ctx, "Could not CreateSlack:%v", err)
+			logger.LogError(ctx, "Could not CreateComposer:%v", err)
 			os.Exit(-2)
 		}
 
@@ -207,7 +247,7 @@ func main() {
 			},
 			srcStore,
 			dsw,
-			slackNotifier)
+			notificationComposer)
 		if err != nil {
 			logger.LogError(ctx, "Could not CreateRepoWatcher:%v", err)
 			os.Exit(-2)
@@ -235,7 +275,7 @@ func main() {
 			watcher,
 			nomadAPI,
 			evStore,
-			slackNotifier)
+			notificationComposer)
 		if err != nil {
 			logger.LogError(ctx, "Could not CreateReconciliationManager:%v", err)
 			os.Exit(-2)
@@ -417,4 +457,17 @@ func main() {
 	if err := app.Start(); err != nil {
 		logger.LogError(ctx, "Could not start app:%v", err)
 	}
+}
+
+func ReadFromFile(ctx context.Context, logger log.Logger, key string, def string) string {
+	fp := env.GetStringEnv(ctx, logger, key, "")
+	if fp == "" {
+		return def
+	}
+	b, err := os.ReadFile(fp)
+	if err != nil {
+		logger.LogError(ctx, "Could not read file %s for key %s", fp, key)
+		return def
+	}
+	return string(b)
 }
