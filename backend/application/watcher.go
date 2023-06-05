@@ -436,44 +436,48 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				continue
 			}
 			if errorCount > 0 {
+				// only notify if we broke the retry threshold
+				notify := errorCount >= w.cfg.ErrorRetryCount
 				errorCount = 0
-				err = w.notifier.Notify(ctx, NotifyOptions{
-					Source:  wi.Source,
-					Type:    NotificationSuccess,
-					Message: "Synced successfully",
-					Infos: []NotifyAdditionalInfos{
-						{
-							Header: "Git-Url",
-							Text:   wi.Source.URL,
+				if notify {
+					err = w.notifier.Notify(ctx, NotifyOptions{
+						Source:  wi.Source,
+						Type:    NotificationSuccess,
+						Message: "Synced successfully",
+						Infos: []NotifyAdditionalInfos{
+							{
+								Header: "Git-Url",
+								Text:   wi.Source.URL,
+							},
+							{
+								Header: "Git-Rev",
+								Text:   wi.Source.Branch,
+							},
+							{
+								Header: "Git-Repo-Path",
+								Text:   wi.Source.Path,
+							},
+							{
+								Header: "Nomad-Namespace",
+								Text:   wi.Source.Namespace,
+							},
+							{
+								Header: "Nomad-Region",
+								Text:   wi.Source.Region,
+							},
+							{
+								Header: "Nomad-DataCenter",
+								Text:   wi.Source.DataCenter,
+							},
+							{
+								Header: "Force Restart",
+								Text:   fmt.Sprintf("%v", restart),
+							},
 						},
-						{
-							Header: "Git-Rev",
-							Text:   wi.Source.Branch,
-						},
-						{
-							Header: "Git-Repo-Path",
-							Text:   wi.Source.Path,
-						},
-						{
-							Header: "Nomad-Namespace",
-							Text:   wi.Source.Namespace,
-						},
-						{
-							Header: "Nomad-Region",
-							Text:   wi.Source.Region,
-						},
-						{
-							Header: "Nomad-DataCenter",
-							Text:   wi.Source.DataCenter,
-						},
-						{
-							Header: "Force Restart",
-							Text:   fmt.Sprintf("%v", restart),
-						},
-					},
-				})
-				if err != nil {
-					w.logger.LogError(ctx, "Could not notify:%v", err)
+					})
+					if err != nil {
+						w.logger.LogError(ctx, "Could not notify:%v", err)
+					}
 				}
 			}
 
