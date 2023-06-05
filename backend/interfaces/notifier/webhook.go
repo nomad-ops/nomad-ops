@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -69,6 +70,10 @@ func CreateWebhook(ctx context.Context,
 		},
 		"now": func() string {
 			return time.Now().Format(time.RFC3339)
+		},
+		"json": func(v interface{}) string {
+			b, _ := json.MarshalIndent(v, "", "    ")
+			return string(b)
 		},
 	}
 
