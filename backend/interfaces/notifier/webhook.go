@@ -25,6 +25,7 @@ type WebhookConfig struct {
 	Timeout             time.Duration
 	AuthHeaderName      string
 	AuthHeaderValue     string
+	FireOn              []string
 	LogTemplateResults  bool
 }
 
@@ -61,21 +62,25 @@ func CreateWebhook(ctx context.Context,
 			},
 		},
 	}
+
+	fMap := template.FuncMap{
+		"queryEscape": func(s string) string {
+			return url.QueryEscape(s)
+		},
+		"now": func() string {
+			return time.Now().Format(time.RFC3339)
+		},
+	}
+
 	if cfg.BodyTemplate != "" {
-		bodyTmp, err := template.New("body").Parse(cfg.BodyTemplate)
+		bodyTmp, err := template.New("body").Funcs(fMap).Parse(cfg.BodyTemplate)
 		if err != nil {
 			return nil, err
 		}
 		t.bodyTemplate = bodyTmp
 	}
 	if cfg.QueryParamsTemplate != "" {
-		queryTmp, err := template.New("query").Funcs(
-			template.FuncMap{
-				"QueryEscape": func(s string) string {
-					return url.QueryEscape(s)
-				},
-			},
-		).Parse(cfg.QueryParamsTemplate)
+		queryTmp, err := template.New("query").Funcs(fMap).Parse(cfg.QueryParamsTemplate)
 		if err != nil {
 			return nil, err
 		}
@@ -87,6 +92,15 @@ func CreateWebhook(ctx context.Context,
 
 func (s *Webhook) Notify(ctx context.Context, opts application.NotifyOptions) error {
 	if s.cfg.WebhookURL == "" {
+		return nil
+	}
+	fire := false
+	for _, v := range s.cfg.FireOn {
+		if v == string(opts.Type) {
+			fire = true
+		}
+	}
+	if !fire && len(s.cfg.FireOn) != 0 {
 		return nil
 	}
 
@@ -122,6 +136,9 @@ func (s *Webhook) Notify(ctx context.Context, opts application.NotifyOptions) er
 		}
 		req.URL.RawQuery = values.Encode()
 	}
+
+	req.Header.Set("Content-Type", "application/json")
+
 	if s.cfg.LogTemplateResults {
 		reqB, _ := httputil.DumpRequestOut(req, true)
 		s.logger.LogInfo(ctx, "%s %s:\n%s", s.cfg.Method, s.cfg.WebhookURL, string(reqB))

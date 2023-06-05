@@ -224,6 +224,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			r.logger.LogInfo(ctx, "Updated job %v", strPtrToStr(job.Name))
 			err = r.notifier.Notify(ctx, NotifyOptions{
 				Source:  src,
+				GitInfo: desiredState.GitInfo,
 				Type:    NotificationSuccess,
 				Message: fmt.Sprintf("Updated Job:%v", strPtrToStr(job.Job.Name)),
 				Infos: []NotifyAdditionalInfos{

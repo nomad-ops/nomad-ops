@@ -334,6 +334,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				if errorCount == w.cfg.ErrorRetryCount {
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
+						GitInfo: desiredState.GitInfo,
 						Type:    NotificationError,
 						Message: "Could not apply overrides",
 						Infos: []NotifyAdditionalInfos{
@@ -390,6 +391,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				if errorCount == w.cfg.ErrorRetryCount {
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
+						GitInfo: desiredState.GitInfo,
 						Type:    NotificationError,
 						Message: "Could not Reconcile",
 						Infos: []NotifyAdditionalInfos{
@@ -442,6 +444,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				if notify {
 					err = w.notifier.Notify(ctx, NotifyOptions{
 						Source:  wi.Source,
+						GitInfo: desiredState.GitInfo,
 						Type:    NotificationSuccess,
 						Message: "Synced successfully",
 						Infos: []NotifyAdditionalInfos{

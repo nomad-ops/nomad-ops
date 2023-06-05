@@ -213,6 +213,7 @@ func main() {
 						Method:              env.GetStringEnv(ctx, logger, "WEBHOOK_METHOD", ""),
 						Insecure:            env.GetStringEnv(ctx, logger, "WEBHOOK_INSECURE", "FALSE") == "TRUE",
 						LogTemplateResults:  env.GetStringEnv(ctx, logger, "WEBHOOK_LOG_TEMPLATE_RESULTS", "FALSE") == "TRUE",
+						FireOn:              strings.Split(env.GetStringEnv(ctx, logger, "WEBHOOK_FIRE_ON", "success"), ","),
 						AuthHeaderName:      env.GetStringEnv(ctx, logger, "WEBHOOK_AUTH_HEADER_NAME", ""),
 						AuthHeaderValue:     ReadFromFile(ctx, logger, "WEBHOOK_AUTH_HEADER_VALUE_FILE", ""),
 						BodyTemplate:        ReadFromFile(ctx, logger, "WEBHOOK_BODY_TEMPLATE_FILE", ""),

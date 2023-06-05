@@ -22,6 +22,7 @@ var (
 
 type NotifyOptions struct {
 	Source  *domain.Source
+	GitInfo GitInfo
 	Type    NotificationType
 	Message string
 	Infos   []NotifyAdditionalInfos
