@@ -24,9 +24,13 @@ type DeployKey struct {
 	// value
 	// Required: true
 	Value string `json:"value"`
+
+	// teamID of owner
+	TeamID string `json:"teamID,omitempty"`
 }
 
-func initKeyCollection(app core.App) (*models.Collection, error) {
+func initKeyCollection(app core.App,
+	teamsCollection *models.Collection) (*models.Collection, error) {
 
 	collection, err := app.Dao().FindCollectionByNameOrId("keys")
 
@@ -45,12 +49,14 @@ func initKeyCollection(app core.App) (*models.Collection, error) {
 	form.CreateRule = types.Pointer("@request.auth.id != ''")
 	form.UpdateRule = types.Pointer("@request.auth.id != ''")
 	form.DeleteRule = types.Pointer("@request.auth.id != ''")
+	form.Indexes = types.JsonArray[string]{
+		"create unique index deploy_key_unique on keys (name)",
+	}
 
 	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "name",
 		Type:     schema.FieldTypeText,
 		Required: true,
-		Unique:   true,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(100),
 		},
@@ -61,6 +67,16 @@ func initKeyCollection(app core.App) (*models.Collection, error) {
 		Required: true,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(1000),
+		},
+	})
+	max := 1
+	addOrUpdateField(form, &schema.SchemaField{
+		Name:     "team",
+		Type:     schema.FieldTypeRelation,
+		Required: false, // optional, if not set every team can see this
+		Options: &schema.RelationOptions{
+			CollectionId: teamsCollection.Id,
+			MaxSelect:    &max,
 		},
 	})
 

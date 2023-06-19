@@ -4,7 +4,7 @@ import { Subscription } from 'rxjs';
 import { Source } from '../domain/Source';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RealTimeAccess from '../services/RealTimeAccess';
-import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Chip, Paper, Stack, TextField, Box, Drawer, ListItemButton, ListItemIcon, useMediaQuery, Toolbar } from '@mui/material';
+import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Chip, Paper, Stack, TextField } from '@mui/material';
 import { orange, red, teal } from '@mui/material/colors';
 import CheckIcon from '@mui/icons-material/Check';
 import ErrorIcon from '@mui/icons-material/Error';
@@ -29,6 +29,7 @@ import { Team } from '../domain/Team';
 import TeamFilter from '../components/TeamFilter';
 import { useAuth } from '../services/auth/useAuth';
 import SourceDetailDrawer from '../components/SourceDetailDrawer';
+import { VaultToken } from '../domain/VaultToken';
 
 interface IFormInput {
     name: string;
@@ -41,6 +42,7 @@ interface IFormInput {
     teams?: string[];
     region: string;
     deployKey: string;
+    vaultToken: string;
 }
 
 const defaultValues = {
@@ -51,7 +53,8 @@ const defaultValues = {
     dataCenter: "",
     namespace: "",
     region: "",
-    deployKey: "__empty__"
+    deployKey: "__empty__",
+    vaultToken: "__empty__"
 };
 
 interface IEditTeamsFormInput {
@@ -96,7 +99,8 @@ export default function Sources() {
             teams: data.teams,
             region: data.region,
 
-            deployKey: data.deployKey && data.deployKey !== "__empty__" ? data.deployKey : undefined
+            deployKey: data.deployKey && data.deployKey !== "__empty__" ? data.deployKey : undefined,
+            vaultToken: data.vaultToken && data.vaultToken !== "__empty__" ? data.vaultToken : undefined
         })
             .then(() => {
                 NotificationService.notifySuccess(`Watching ${data.url}...`);
@@ -198,9 +202,45 @@ export default function Sources() {
                     id: "__empty__",
                     name: "No key",
                     value: "",
-                    created: ""
+                    created: "",
+                    
                 })
                 setKeys(objArray);
+            });
+        })
+        return () => {
+            sub?.unsubscribe();
+        };
+    }, []);
+
+    const [vaultTokens, setVaultTokens] = React.useState<VaultToken[] | undefined>(undefined);
+
+    React.useEffect(() => {
+        var sub: Subscription | undefined = undefined;
+        RealTimeAccess.GetStore<VaultToken>("vault_tokens").then((s) => {
+            sub = s.subscribe((VaultTokens) => {
+                if (VaultTokens === undefined) {
+                    setVaultTokens(undefined);
+                    return;
+                }
+                var objArray: VaultToken[] = [];
+                for (const VaultToken in VaultTokens) {
+                    if (Object.prototype.hasOwnProperty.call(VaultTokens, VaultToken)) {
+                        const element = VaultTokens[VaultToken];
+                        objArray.push(element);
+                    }
+                }
+                objArray.sort((a, b) => {
+                    return a.name.localeCompare(b.name);
+                });
+                objArray.unshift({
+                    id: "__empty__",
+                    name: "No vault token",
+                    value: "",
+                    team: "",
+                    created: ""
+                })
+                setVaultTokens(objArray);
             });
         })
         return () => {
@@ -365,6 +405,23 @@ export default function Sources() {
                     }
                 }
 
+                let vaultToken = "";
+                if (vaultTokens) {
+                    let found = false;
+                    for (let index = 0; index < vaultTokens.length; index++) {
+                        const element = vaultTokens[index];
+                        if (k.vaultToken && (element.id === k.vaultToken || (k.vaultToken.length && k.vaultToken.length > 0 && k.vaultToken[0] === element.id))) {
+                            vaultToken = element.name;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found === false && (k.vaultToken && k.vaultToken.length && k.vaultToken.length > 0)) {
+                        // We expected a vaultToken...probably deleted
+                        vaultToken = "Vault Token was not found. Please fix"
+                    }
+                }
+
                 return <Grid key={k.id} item xs={12} md={6} lg={4}>
                     <Card>
                         <CardHeader
@@ -451,6 +508,23 @@ export default function Sources() {
                                                             color="text.primary"
                                                         >
                                                             {deployKey === "" ? "No deploy key set" : deployKey}
+                                                        </Typography>
+                                                    </React.Fragment>
+                                                }
+                                            />
+                                        </ListItem>
+                                        <ListItem alignItems="flex-start">
+                                            <ListItemText
+                                                primary="Vault token:"
+                                                secondary={
+                                                    <React.Fragment>
+                                                        <Typography
+                                                            sx={{ display: 'inline' }}
+                                                            component="span"
+                                                            variant="body2"
+                                                            color="text.primary"
+                                                        >
+                                                            {vaultToken === "" ? "No vault token set" : vaultToken}
                                                         </Typography>
                                                     </React.Fragment>
                                                 }
@@ -745,6 +819,19 @@ export default function Sources() {
                             value: key.id as string
                         }
                     }) : []} />
+                    <FormInputDropdown
+                        name="vaultToken"
+                        control={control}
+                        required={false}
+                        label="Vault Token"
+                        options={vaultTokens ? vaultTokens.filter((t) => {
+                            return t.id !== undefined
+                        }).map((t) => {
+                            return {
+                                label: t.name,
+                                value: t.id as string
+                            }
+                        }) : []} />
                 <div>
                     <FormInputMultiCheckbox
                         name="force"

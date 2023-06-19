@@ -1,17 +1,8 @@
 import React from "react";
-import { Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Divider, Drawer, Toolbar, ListSubheader, Typography, ListItemAvatar, IconButton } from "@mui/material";
-import MailIcon from '@mui/icons-material/Mail';
-import InboxIcon from '@mui/icons-material/Inbox';
+import { Box, List, ListItem, ListItemText, Divider, Drawer, Toolbar, ListSubheader, Typography, ListItemAvatar, IconButton } from "@mui/material";
 import CheckIcon from '@mui/icons-material/Check';
 import CancelIcon from '@mui/icons-material/Cancel';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import ErrorIcon from '@mui/icons-material/Error';
-import LoopIcon from '@mui/icons-material/Loop';
-import AddIcon from '@mui/icons-material/Add';
-import GroupAddIcon from '@mui/icons-material/GroupAdd';
-import SyncIcon from '@mui/icons-material/Sync';
-import NotStartedIcon from '@mui/icons-material/NotStarted';
-import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import QuestionMarkIcon from '@mui/icons-material/QuestionMark';
 import { Source } from "../domain/Source";
 import { JobInfo } from "../domain/JobInfo";

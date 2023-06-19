@@ -12,11 +12,6 @@ import (
 )
 
 func InitModels(ctx context.Context, logger log.Logger, app core.App) error {
-	keyCollection, err := initKeyCollection(app)
-	if err != nil {
-		logger.LogError(ctx, "Could not initKeyCollection:%v - %T", err, err)
-		return err
-	}
 
 	usersCollection, err := app.Dao().FindCollectionByNameOrId("users")
 	if err != nil {
@@ -37,7 +32,18 @@ func InitModels(ctx context.Context, logger log.Logger, app core.App) error {
 		return err
 	}
 
-	srcCollection, err := initSourceCollection(app, keyCollection, teamCollection)
+	keyCollection, err := initKeyCollection(app, teamCollection)
+	if err != nil {
+		logger.LogError(ctx, "Could not initKeyCollection:%v - %T", err, err)
+		return err
+	}
+	vaultTokenCollection, err := initVaultTokenCollection(app, teamCollection)
+	if err != nil {
+		logger.LogError(ctx, "Could not initVaultTokenCollection:%v - %T", err, err)
+		return err
+	}
+
+	srcCollection, err := initSourceCollection(app, keyCollection, teamCollection, vaultTokenCollection)
 	if err != nil {
 		logger.LogError(ctx, "Could not initSourceCollection:%v - %T", err, err)
 		return err
@@ -57,7 +63,6 @@ func addOrUpdateField(form *forms.CollectionUpsert, field *schema.SchemaField) {
 		f.Name = field.Name
 		f.Type = field.Type
 		f.Required = field.Required
-		f.Unique = field.Unique
 		f.Options = field.Options
 	} else {
 		form.Schema.AddField(field)

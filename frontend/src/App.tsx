@@ -1,4 +1,3 @@
-import * as React from 'react';
 import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
 import Toolbar from '@mui/material/Toolbar';
@@ -14,7 +13,7 @@ import { Outlet } from 'react-router-dom';
 import { Source } from './domain/Source';
 import { Team } from './domain/Team';
 import { User } from './domain/User';
-import NomadService from './services/NomadService';
+import { VaultToken } from './domain/VaultToken';
 
 function Copyright(props: any) {
   return (
@@ -74,6 +73,18 @@ export default function App() {
       id: record.id,
       name: record["name"],
       value: record["value"],
+      team: record["team"],
+      created: record.created
+    };
+
+    return res;
+  });
+  RealTimeAccess.NewStore<VaultToken>("vault_tokens", (record) => {
+    var res: VaultToken = {
+      id: record.id,
+      name: record["name"],
+      value: record["value"],
+      team: record["team"],
       created: record.created
     };
 
@@ -105,6 +116,7 @@ export default function App() {
       updated: record.updated,
       status: record["status"],
       deployKey: record["deployKey"],
+      vaultToken: record["vaultToken"],
       teams: record["teams"]
     };
 

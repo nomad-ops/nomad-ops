@@ -13,6 +13,7 @@ export interface Source {
     updated?: string,
     teams?: string[],
     deployKey?: string | string[],
+    vaultToken?: string | string[],
     status?: SourceStatus | null
 }
 export interface SourceStatus {

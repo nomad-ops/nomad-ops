@@ -1,4 +1,4 @@
-export interface Key {
+export interface VaultToken {
     id?: string
     name: string,
     value: string,

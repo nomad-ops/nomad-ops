@@ -37,6 +37,9 @@ type Source struct {
 	// deployKeyID to use
 	DeployKeyID string `json:"deployKeyID,omitempty"`
 
+	// vaultTokenID to use
+	VaultTokenID string `json:"vaultTokenID,omitempty"`
+
 	// if true every commit forces an job update
 	Force bool `json:"force,omitempty"`
 
@@ -64,7 +67,8 @@ type Source struct {
 
 func initSourceCollection(app core.App,
 	keysCollection *models.Collection,
-	teamsCollection *models.Collection) (*models.Collection, error) {
+	teamsCollection *models.Collection,
+	vaultTokenCollection *models.Collection) (*models.Collection, error) {
 
 	collection, err := app.Dao().FindCollectionByNameOrId("sources")
 
@@ -89,7 +93,6 @@ func initSourceCollection(app core.App,
 		Name:     "name",
 		Type:     schema.FieldTypeText,
 		Required: true,
-		Unique:   false,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(200),
 		},
@@ -98,7 +101,6 @@ func initSourceCollection(app core.App,
 		Name:     "url",
 		Type:     schema.FieldTypeText,
 		Required: true,
-		Unique:   false,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(200),
 		},
@@ -107,7 +109,6 @@ func initSourceCollection(app core.App,
 		Name:     "branch",
 		Type:     schema.FieldTypeText,
 		Required: true,
-		Unique:   false,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(100),
 		},
@@ -116,7 +117,6 @@ func initSourceCollection(app core.App,
 		Name:     "path",
 		Type:     schema.FieldTypeText,
 		Required: true,
-		Unique:   false,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(200),
 		},
@@ -125,7 +125,6 @@ func initSourceCollection(app core.App,
 		Name:     "dataCenter",
 		Type:     schema.FieldTypeText,
 		Required: true,
-		Unique:   false,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(100),
 		},
@@ -134,7 +133,6 @@ func initSourceCollection(app core.App,
 		Name:     "region",
 		Type:     schema.FieldTypeText,
 		Required: false,
-		Unique:   false,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(100),
 		},
@@ -143,7 +141,6 @@ func initSourceCollection(app core.App,
 		Name:     "namespace",
 		Type:     schema.FieldTypeText,
 		Required: false,
-		Unique:   false,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(100),
 		},
@@ -153,7 +150,6 @@ func initSourceCollection(app core.App,
 		Name:     "deployKey",
 		Type:     schema.FieldTypeRelation,
 		Required: false,
-		Unique:   false,
 		Options: &schema.RelationOptions{
 			CollectionId: keysCollection.Id,
 			MaxSelect:    &max,
@@ -179,9 +175,17 @@ func initSourceCollection(app core.App,
 		Name:     "teams",
 		Type:     schema.FieldTypeRelation,
 		Required: false,
-		Unique:   false,
 		Options: &schema.RelationOptions{
 			CollectionId: teamsCollection.Id,
+		},
+	})
+	addOrUpdateField(form, &schema.SchemaField{
+		Name:     "vaultToken",
+		Type:     schema.FieldTypeRelation,
+		Required: false,
+		Options: &schema.RelationOptions{
+			CollectionId: vaultTokenCollection.Id,
+			MaxSelect:    &max,
 		},
 	})
 
@@ -214,6 +218,7 @@ func SourceFromRecord(record *models.Record, withStatus bool) *Source {
 		Region:          record.GetString("region"),
 		Namespace:       record.GetString("namespace"),
 		DeployKeyID:     record.GetString("deployKey"),
+		VaultTokenID:    record.GetString("vaultToken"),
 		CreateNamespace: record.GetBool("createNamespace"),
 		Force:           record.GetBool("force"),
 		Paused:          record.GetBool("paused"),
