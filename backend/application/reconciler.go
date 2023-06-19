@@ -97,6 +97,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 
 	for k, job := range currentState.CurrentJobs {
 		if _, ok := desiredState.Jobs[k]; !ok {
+			r.logger.LogTrace(ctx, "Checking if job is still required: %v...%+v", strPtrToStr(job.Name), log.ToJSONString(job))
 			cpy := job
 
 			if cpy.Periodic != nil && cpy.Periodic.Enabled != nil && *cpy.Periodic.Enabled {
