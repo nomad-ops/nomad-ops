@@ -104,7 +104,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 				// ignore periodic jobs
 				continue
 			}
-			if cpy.ParentID == nil || *cpy.ParentID == "" {
+			if cpy.ParentID != nil && *cpy.ParentID != "" {
 				// has a parent job, periodic probably
 				continue
 			}
