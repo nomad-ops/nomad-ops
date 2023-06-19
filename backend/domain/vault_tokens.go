@@ -44,11 +44,11 @@ func initVaultTokenCollection(app core.App,
 	form := forms.NewCollectionUpsert(app, collection)
 	form.Name = "vault_tokens"
 	form.Type = models.CollectionTypeBase
-	form.ListRule = types.Pointer("@request.auth.id != ''")
-	form.ViewRule = types.Pointer("@request.auth.id != ''")
+	form.ListRule = types.Pointer("@request.auth.id != '' && (team = '' || team.members.id = @request.auth.id)")
+	form.ViewRule = types.Pointer("@request.auth.id != '' && (team = '' || team.members.id = @request.auth.id)")
 	form.CreateRule = types.Pointer("@request.auth.id != ''")
-	form.UpdateRule = types.Pointer("@request.auth.id != ''")
-	form.DeleteRule = types.Pointer("@request.auth.id != ''")
+	form.UpdateRule = types.Pointer("@request.auth.id != '' && (team = '' || team.members.id = @request.auth.id)")
+	form.DeleteRule = types.Pointer("@request.auth.id != '' && (team = '' || team.members.id = @request.auth.id)")
 	form.Indexes = types.JsonArray[string]{
 		"create unique index vault_token_unique on vault_tokens (name)",
 	}
