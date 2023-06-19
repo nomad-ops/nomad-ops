@@ -27,6 +27,8 @@ import (
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/nomadcluster"
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/notifier"
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/sourcestore"
+	"github.com/nomad-ops/nomad-ops/backend/interfaces/teamstore"
+	"github.com/nomad-ops/nomad-ops/backend/interfaces/vaulttokenstore"
 	"github.com/nomad-ops/nomad-ops/backend/utils/env"
 	"github.com/nomad-ops/nomad-ops/backend/utils/errors"
 	"github.com/nomad-ops/nomad-ops/backend/utils/log"
@@ -46,6 +48,17 @@ func main() {
 	app := pocketbase.New()
 	logger.LogInfo(ctx, "Start")
 
+	teamStore, err := teamstore.CreatePocketBaseStore(ctx,
+		log.NewSimpleLogger(trace, "TeamStore-PocketBase"),
+		teamstore.PocketBaseStoreConfig{
+			App: app,
+		})
+
+	if err != nil {
+		logger.LogError(ctx, "Could not CreatePocketBaseStore for teams:%v", err)
+		return
+	}
+
 	app.OnRecordBeforeCreateRequest().Add(func(e *core.RecordCreateEvent) error {
 
 		if e.Collection.Name == "sources" {
@@ -53,6 +66,77 @@ func main() {
 				Status:  domain.SourceStatusStatusInit,
 				Message: "Pending...",
 			})
+		}
+		return nil
+	})
+
+	app.OnRecordViewRequest().Add(func(e *core.RecordViewEvent) error {
+		if e.Collection.Name == "vault_tokens" || e.Collection.Name == "keys" {
+			// once created tokens and keys values are read only
+			e.Record.Set("value", "")
+
+			// TODO check for team and hide completely if not part of this team
+			t := e.Record.GetString("team")
+			if t == "" { // This is accessible by everyone (no assigned team)
+				return nil
+			}
+
+			authRecord, _ := e.HttpContext.Get(apis.ContextAuthRecordKey).(*models.Record)
+			if authRecord == nil {
+				return apis.NewForbiddenError("Only auth records can access this endpoint", nil)
+			}
+
+			allowed, err := teamStore.IsTeamMember(e.HttpContext.Request().Context(), t, authRecord.GetId())
+			if err != nil {
+				return err
+			}
+			if !allowed {
+				return apis.NewForbiddenError("Not allowed. Request access from team", nil)
+			}
+		}
+		return nil
+	})
+	app.OnRecordsListRequest().Add(func(e *core.RecordsListEvent) error {
+		if e.Collection.Name == "vault_tokens" || e.Collection.Name == "keys" {
+
+			authRecord, _ := e.HttpContext.Get(apis.ContextAuthRecordKey).(*models.Record)
+			if authRecord == nil {
+				return apis.NewForbiddenError("Only auth records can access this endpoint", nil)
+			}
+
+			var records []*models.Record
+
+			for _, record := range e.Records {
+				// once created tokens and keys values are read only
+				record.Set("value", "")
+
+				// TODO check for team and hide completely if not part of this team
+				t := record.GetString("team")
+				if t == "" { // This is accessible by everyone (no assigned team)
+					cpy := record
+					records = append(records, cpy)
+					continue
+				}
+				allowed, err := teamStore.IsTeamMember(e.HttpContext.Request().Context(), t, authRecord.GetId())
+				if err != nil {
+					return err
+				}
+				if !allowed {
+					continue
+				}
+				cpy := record
+				records = append(records, cpy)
+			}
+
+			e.Records = records
+		}
+		return nil
+	})
+	app.OnRealtimeBeforeMessageSend().Add(func(e *core.RealtimeMessageEvent) error {
+		if e.Message.Name == "vault_tokens" || e.Message.Name == "keys" {
+			// once created tokens and keys values are read only
+
+			// TODO check for team and hide completely if not part of this team
 		}
 		return nil
 	})
@@ -148,6 +232,16 @@ func main() {
 
 		if err != nil {
 			logger.LogError(ctx, "Could not CreatePocketBaseStore for keys:%v", err)
+			return err
+		}
+		vaultTokenStore, err := vaulttokenstore.CreatePocketBaseStore(ctx,
+			log.NewSimpleLogger(trace, "VaultTokenStore-PocketBase"),
+			vaulttokenstore.PocketBaseStoreConfig{
+				App: e.App,
+			})
+
+		if err != nil {
+			logger.LogError(ctx, "Could not CreatePocketBaseStore for vaultTokens:%v", err)
 			return err
 		}
 
@@ -248,7 +342,8 @@ func main() {
 			},
 			srcStore,
 			dsw,
-			notificationComposer)
+			notificationComposer,
+			vaultTokenStore)
 		if err != nil {
 			logger.LogError(ctx, "Could not CreateRepoWatcher:%v", err)
 			os.Exit(-2)
@@ -325,11 +420,6 @@ func main() {
 					return err
 				}
 			}
-
-			return nil
-		})
-
-		app.OnRecordsListRequest().Add(func(e *core.RecordsListEvent) error {
 
 			return nil
 		})

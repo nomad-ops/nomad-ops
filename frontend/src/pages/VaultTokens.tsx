@@ -2,7 +2,7 @@ import * as React from 'react';
 import Grid from '@mui/material/Grid';
 
 import RealTimeAccess from '../services/RealTimeAccess';
-import { Key } from '../domain/Key';
+import { VaultToken } from '../domain/VaultToken';
 import Card from '@mui/material/Card';
 import CardHeader from '@mui/material/CardHeader';
 import Avatar from '@mui/material/Avatar';
@@ -16,23 +16,25 @@ import { teal } from '@mui/material/colors';
 import { Subscription } from 'rxjs';
 import { FormInputText } from '../components/form-components/FormInputText';
 import { useForm } from 'react-hook-form';
-import KeyService from '../services/KeyService';
+import VaultTokenService from '../services/VaultTokenService';
 import NotificationService from '../services/NotificationService';
 import { FormTextArea } from '../components/form-components/FormTextArea';
 import { Team } from '../domain/Team';
 import { FormInputDropdown } from '../components/form-components/FormInputDropdown';
 
-interface IKeyFormInput {
+interface IVaultTokenFormInput {
     name: string;
     value: string;
+    team: string;
 }
 
-const defaultKeyValues = {
+const defaultVaultTokenValues = {
     name: "",
-    value: ""
+    value: "",
+    team: ""
 };
 
-export default function Keys() {
+export default function VaultTokens() {
     const [open, setOpen] = React.useState(false);
 
     const handleClickOpen = () => {
@@ -45,43 +47,44 @@ export default function Keys() {
         setOpen(false);
     };
 
-    const methods = useForm<IKeyFormInput>({ defaultValues: defaultKeyValues });
+    const methods = useForm<IVaultTokenFormInput>({ defaultValues: defaultVaultTokenValues });
     const { handleSubmit, reset, control } = methods;
-    const onSubmit = (data: IKeyFormInput) => {
+    const onSubmit = (data: IVaultTokenFormInput) => {
         // TODO validate
 
-        KeyService.createKey({
+        VaultTokenService.createVaultToken({
             name: data.name,
-            value: data.value
+            value: data.value,
+            team: data.team
         })
             .then(() => {
-                NotificationService.notifySuccess(`Created key ${data.name}...`);
+                NotificationService.notifySuccess(`Created VaultToken ${data.name}...`);
                 setOpen(false);
                 reset();
             });
     };
 
-    const [keys, setKeys] = React.useState<Key[] | undefined>(undefined);
+    const [vaultTokens, setVaultTokens] = React.useState<VaultToken[] | undefined>(undefined);
 
     React.useEffect(() => {
         var sub: Subscription | undefined = undefined;
-        RealTimeAccess.GetStore<Key>("keys").then((s) => {
-            sub = s.subscribe((keys) => {
-                if (keys === undefined) {
-                    setKeys(undefined);
+        RealTimeAccess.GetStore<VaultToken>("vault_tokens").then((s) => {
+            sub = s.subscribe((VaultTokens) => {
+                if (VaultTokens === undefined) {
+                    setVaultTokens(undefined);
                     return;
                 }
-                var objArray: Key[] = [];
-                for (const key in keys) {
-                    if (Object.prototype.hasOwnProperty.call(keys, key)) {
-                        const element = keys[key];
+                var objArray: VaultToken[] = [];
+                for (const VaultToken in VaultTokens) {
+                    if (Object.prototype.hasOwnProperty.call(VaultTokens, VaultToken)) {
+                        const element = VaultTokens[VaultToken];
                         objArray.push(element);
                     }
                 }
                 objArray.sort((a, b) => {
                     return a.name.localeCompare(b.name);
                 });
-                setKeys(objArray);
+                setVaultTokens(objArray);
             });
         })
         return () => {
@@ -136,7 +139,7 @@ export default function Keys() {
             </List>
         </Paper>
         <Grid container spacing={3} sx={{ marginTop: "0px" }}>
-            {keys ? keys.filter((k) => {
+            {vaultTokens ? vaultTokens.filter((k) => {
                 if (searchTerm === "") {
                     return true;
                 }
@@ -186,9 +189,9 @@ export default function Keys() {
                                         if (!k.id) {
                                             return;
                                         }
-                                        KeyService.deleteKey(k.id)
+                                        VaultTokenService.deleteVaultToken(k.id)
                                             .then(() => {
-                                                NotificationService.notifySuccess(`Removed key ${k.name}`);
+                                                NotificationService.notifySuccess(`Removed VaultToken ${k.name}`);
                                             });
                                     }
                                 }}>
@@ -199,12 +202,12 @@ export default function Keys() {
                     </Card>
                 </Grid>
             }) : undefined}
-            {keys && keys.length === 0 ? <Container sx={{ textAlign: "center" }}>
+            {vaultTokens && vaultTokens.length === 0 ? <Container sx={{ textAlign: "center" }}>
                 <Typography>
-                    No keys configured
+                    No Vault Tokens configured
                 </Typography>
             </Container> : undefined}
-            {keys === undefined ? <React.Fragment>
+            {vaultTokens === undefined ? <React.Fragment>
                 <Grid item xs={12} md={4} lg={3}>
                     <Skeleton variant="rectangular" height={150} />
                 </Grid>
@@ -227,10 +230,10 @@ export default function Keys() {
             <AddIcon />
         </Fab>
         <Dialog open={open} onClose={handleClose} maxWidth={false} fullWidth>
-            <DialogTitle>Add new key</DialogTitle>
+            <DialogTitle>Add new Vault Token</DialogTitle>
             <DialogContent>
                 <DialogContentText>
-                    Fill in the form to add a new Key.
+                    Fill in the form to add a new Vault Token.
                 </DialogContentText>
                 <FormInputText
                     name="name"
@@ -241,7 +244,7 @@ export default function Keys() {
                 <FormTextArea
                     name="value"
                     control={control}
-                    required={true} label={'Key value'} />
+                    required={true} label={'VaultToken value'} />
                 <FormInputDropdown
                     name="team"
                     control={control}

@@ -40,6 +40,7 @@ type RepoWatcher struct {
 	lock                sync.Mutex
 	watchList           map[string]*WatchInfo
 	notifier            Notifier
+	vaultRepo           VaultTokenRepo
 }
 
 type RepoWatcherConfig struct {
@@ -57,7 +58,8 @@ func CreateRepoWatcher(ctx context.Context,
 	cfg RepoWatcherConfig,
 	sourceStatusPatcher SourceStatusPatcher,
 	dsw DesiredStateWatcher,
-	notifier Notifier) (*RepoWatcher, error) {
+	notifier Notifier,
+	vaultRepo VaultTokenRepo) (*RepoWatcher, error) {
 	t := &RepoWatcher{
 		ctx:                 ctx,
 		logger:              logger,
@@ -66,6 +68,7 @@ func CreateRepoWatcher(ctx context.Context,
 		dsw:                 dsw,
 		watchList:           map[string]*WatchInfo{},
 		notifier:            notifier,
+		vaultRepo:           vaultRepo,
 	}
 
 	return t, nil
@@ -318,6 +321,69 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				}
 				errorCount++
 				continue
+			}
+
+			if wi.Source.VaultTokenID != "" {
+				t, err := w.vaultRepo.GetVaultToken(ctx, wi.Source.VaultTokenID)
+				if err != nil {
+					w.logger.LogError(wi.ctx, "Could not GetVaultToken: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
+					err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+						Status:        domain.SourceStatusStatusError,
+						Message:       err.Error(),
+						LastCheckTime: toTimePtr(time.Now()),
+					})
+					if err != nil {
+						w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
+					}
+					if errorCount == w.cfg.ErrorRetryCount {
+						err = w.notifier.Notify(ctx, NotifyOptions{
+							Source:  wi.Source,
+							GitInfo: desiredState.GitInfo,
+							Type:    NotificationError,
+							Message: "Could not GetVaultToken",
+							Infos: []NotifyAdditionalInfos{
+								{
+									Header: "Git-Url",
+									Text:   wi.Source.URL,
+								},
+								{
+									Header: "Git-Rev",
+									Text:   wi.Source.Branch,
+								},
+								{
+									Header: "Git-Repo-Path",
+									Text:   wi.Source.Path,
+								},
+								{
+									Header: "Nomad-Namespace",
+									Text:   wi.Source.Namespace,
+								},
+								{
+									Header: "Nomad-Region",
+									Text:   wi.Source.Region,
+								},
+								{
+									Header: "Force Restart",
+									Text:   fmt.Sprintf("%v", restart),
+								},
+								{
+									Header: "Error",
+									Text:   fmt.Sprintf("Could not apply overrides:%v", err),
+									Large:  true,
+								},
+							},
+						})
+						if err != nil {
+							w.logger.LogError(ctx, "Could not notify:%v", err)
+						}
+					}
+					errorCount++
+					continue
+				}
+				// using vault token
+				for k := range desiredState.Jobs {
+					desiredState.Jobs[k].VaultToken = &t.Value
+				}
 			}
 
 			err = w.applyOverrides(wi.ctx, wi.Source, desiredState)

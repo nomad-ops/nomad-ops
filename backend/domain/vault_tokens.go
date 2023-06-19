@@ -2,6 +2,7 @@ package domain
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/forms"
@@ -10,20 +11,28 @@ import (
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
-type Team struct {
-
-	// id
-	// Read Only: true
-	ID string `json:"id,omitempty"`
+type VaultToken struct {
 
 	// name
 	// Required: true
 	Name string `json:"name"`
+
+	// created
+	// Read Only: true
+	Created time.Time `json:"timestamp,omitempty"`
+
+	// value
+	// Required: true
+	Value string `json:"value"`
+
+	// teamID of owner
+	TeamID string `json:"teamID,omitempty"`
 }
 
-func initTeamCollection(app core.App, usersCollection *models.Collection) (*models.Collection, error) {
+func initVaultTokenCollection(app core.App,
+	teamsCollection *models.Collection) (*models.Collection, error) {
 
-	collection, err := app.Dao().FindCollectionByNameOrId("teams")
+	collection, err := app.Dao().FindCollectionByNameOrId("vault_tokens")
 
 	if err == sql.ErrNoRows {
 		collection = &models.Collection{}
@@ -33,29 +42,41 @@ func initTeamCollection(app core.App, usersCollection *models.Collection) (*mode
 	}
 
 	form := forms.NewCollectionUpsert(app, collection)
-	form.Name = "teams"
+	form.Name = "vault_tokens"
 	form.Type = models.CollectionTypeBase
-	//form.ListRule = types.Pointer("@request.auth.id != ''")
-	form.ListRule = types.Pointer("")
+	form.ListRule = types.Pointer("@request.auth.id != ''")
 	form.ViewRule = types.Pointer("@request.auth.id != ''")
 	form.CreateRule = types.Pointer("@request.auth.id != ''")
 	form.UpdateRule = types.Pointer("@request.auth.id != ''")
 	form.DeleteRule = types.Pointer("@request.auth.id != ''")
+	form.Indexes = types.JsonArray[string]{
+		"create unique index vault_token_unique on vault_tokens (name)",
+	}
 
 	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "name",
 		Type:     schema.FieldTypeText,
 		Required: true,
 		Options: &schema.TextOptions{
-			Max: types.Pointer(200),
+			Max: types.Pointer(100),
 		},
 	})
 	addOrUpdateField(form, &schema.SchemaField{
-		Name:     "members",
+		Name:     "value",
+		Type:     schema.FieldTypeText,
+		Required: true,
+		Options: &schema.TextOptions{
+			Max: types.Pointer(1000),
+		},
+	})
+	max := 1
+	addOrUpdateField(form, &schema.SchemaField{
+		Name:     "team",
 		Type:     schema.FieldTypeRelation,
-		Required: false,
+		Required: false, // optional, if not set every team can see this
 		Options: &schema.RelationOptions{
-			CollectionId: usersCollection.Id,
+			CollectionId: teamsCollection.Id,
+			MaxSelect:    &max,
 		},
 	})
 
@@ -64,4 +85,12 @@ func initTeamCollection(app core.App, usersCollection *models.Collection) (*mode
 		return nil, err
 	}
 	return collection, nil
+}
+
+func VaultTokenFromRecord(record *models.Record) *VaultToken {
+	return &VaultToken{
+		Name:    record.GetString("name"),
+		Created: record.Created.Time(),
+		Value:   record.GetString("value"),
+	}
 }

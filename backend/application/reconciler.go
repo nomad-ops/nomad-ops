@@ -98,6 +98,12 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 	for k, job := range currentState.CurrentJobs {
 		if _, ok := desiredState.Jobs[k]; !ok {
 			cpy := job
+
+			if cpy.Periodic != nil && cpy.Periodic.Enabled != nil && *cpy.Periodic.Enabled {
+				// ignore periodic jobs
+				continue
+			}
+
 			changed.Delete[k] = cpy
 
 			if src.Paused {

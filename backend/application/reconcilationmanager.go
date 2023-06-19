@@ -46,6 +46,10 @@ type KeyRepo interface {
 	GetKey(ctx context.Context, id string) (*domain.DeployKey, error)
 }
 
+type VaultTokenRepo interface {
+	GetVaultToken(ctx context.Context, id string) (*domain.VaultToken, error)
+}
+
 type EventRepo interface {
 	SaveEvent(ctx context.Context, ev *domain.Event) error
 }
