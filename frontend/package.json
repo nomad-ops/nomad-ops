@@ -15,7 +15,7 @@
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.11",
     "notistack": "^3.0.1",
-    "pocketbase": "^0.12.1",
+    "pocketbase": "^0.15.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.43.5",

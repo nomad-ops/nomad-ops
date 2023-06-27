@@ -9,6 +9,8 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import Typography from '@mui/material/Typography';
 import Container from '@mui/material/Container';
 import { useAuth } from '../services/auth/useAuth';
+import { AuthProviderInfo } from 'pocketbase';
+import pb from '../services/PocketBase';
 
 function Copyright(props: any) {
     return (
@@ -24,6 +26,15 @@ function Copyright(props: any) {
 }
 
 export default function SignIn() {
+
+    const [authProviders, setAuthProviders] = React.useState<AuthProviderInfo[] | undefined>(undefined);
+
+    React.useEffect(() => {
+        pb.collection("users").listAuthMethods().then((res) => {
+            setAuthProviders(res.authProviders);
+        });
+    }, []);
+    
     const auth = useAuth();
 
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -42,6 +53,11 @@ export default function SignIn() {
             return;
         }
         auth.login(username.toString(), password.toString());
+    };
+
+    const handleLoginWithProvider = (event: React.FormEvent<HTMLFormElement>, provider: string) => {
+        event.preventDefault();
+        auth.loginWithOauth2(provider);
     };
 
     return (
@@ -102,6 +118,20 @@ export default function SignIn() {
                                 </Link>
                             </Grid>
                         </Grid> */}
+                </Box>
+                <Box sx={{ mt: 1 }}>
+                    {authProviders ? authProviders.map((prov) => {
+                    return <Button
+                        onClick={(ev) => {
+                            handleLoginWithProvider(ev as any, prov.name);
+                        }}
+                        fullWidth
+                        variant="contained"
+                        sx={{ mt: 3, mb: 2 }}
+                    >
+                        Sign In With {prov.name}
+                    </Button>
+                    }) : undefined}
                 </Box>
             </Box>
             <Copyright sx={{ mt: 8, mb: 4 }} />
