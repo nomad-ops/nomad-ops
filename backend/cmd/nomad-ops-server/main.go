@@ -85,6 +85,11 @@ func main() {
 			TokenUrl:     env.GetStringEnv(ctx, logger, "POCKETBASE_AUTH_MICROSOFT_TOKEN_URL", ""),
 		}
 
+		e.App.OnRecordBeforeAuthWithOAuth2Request().Add(func(e *core.RecordAuthWithOAuth2Event) error {
+			logger.LogInfo(ctx, "AUTH - OAuth2User: %s - Record - %s", log.ToJSONString(e.OAuth2User), log.ToJSONString(e.Record))
+			return nil
+		})
+
 		err := e.App.Dao().SaveSettings(set)
 		if err != nil {
 			return err
