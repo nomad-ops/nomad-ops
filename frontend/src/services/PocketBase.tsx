@@ -15,7 +15,7 @@ pb.beforeSend = function (url: string, options: {
     console.log(url, options);
 
     if (url.includes("/api/realtime") === true) {
-        pb.collection("users").authRefresh();
+       //  pb.collection("users").authRefresh();
     }
 
     return {}

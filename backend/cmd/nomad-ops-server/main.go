@@ -77,6 +77,14 @@ func main() {
 		set.Smtp.AuthMethod = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_AUTH_METHOD", "PLAIN")
 		set.Smtp.Tls = env.GetStringEnv(ctx, logger, "POCKETBASE_SMTP_TLS", "FALSE") == "TRUE"
 
+		set.MicrosoftAuth = settings.AuthProviderConfig{
+			Enabled:      env.GetStringEnv(ctx, logger, "POCKETBASE_AUTH_MICROSOFT_ENABLED", "FALSE") == "TRUE",
+			ClientId:     env.GetStringEnv(ctx, logger, "POCKETBASE_AUTH_MICROSOFT_CLIENT_ID", ""),
+			ClientSecret: env.GetStringEnv(ctx, logger, "POCKETBASE_AUTH_MICROSOFT_CLIENT_SECRET", ""),
+			AuthUrl:      env.GetStringEnv(ctx, logger, "POCKETBASE_AUTH_MICROSOFT_AUTH_URL", ""),
+			TokenUrl:     env.GetStringEnv(ctx, logger, "POCKETBASE_AUTH_MICROSOFT_TOKEN_URL", ""),
+		}
+
 		err := e.App.Dao().SaveSettings(set)
 		if err != nil {
 			return err
@@ -381,6 +389,22 @@ func main() {
 				return c.JSON(http.StatusOK, map[string]string{}) // empty 200 OK response
 			},
 			Middlewares: []echo.MiddlewareFunc{
+				func(next echo.HandlerFunc) echo.HandlerFunc {
+					return func(c echo.Context) error {
+						authRecord, _ := c.Get(apis.ContextAuthRecordKey).(*models.Record)
+						if authRecord == nil {
+							return apis.NewForbiddenError("Only auth records can access this endpoint", nil)
+						}
+						id := c.QueryParam("id")
+						if id == "" {
+							return c.JSON(http.StatusBadRequest, domain.Error{
+								Message: log.ToStrPtr("Expected a valid 'id' parameter"),
+							})
+						}
+
+						return next(c)
+					}
+				},
 				apis.RequireAdminOrRecordAuth("users"),
 				apis.ActivityLogger(e.App),
 				middleware.CORSWithConfig(middleware.CORSConfig{}),
@@ -391,7 +415,7 @@ func main() {
 		})
 
 		e.Router.AddRoute(echo.Route{
-			Method: http.MethodGet,
+			Method: http.MethodGet, // Read only, but still a user might see too much
 			Path:   "/api/nomad/proxy/*",
 			Handler: func(c echo.Context) error {
 
