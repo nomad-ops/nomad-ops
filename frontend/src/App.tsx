@@ -60,11 +60,7 @@ export default function App() {
 
   // Initialize stores ...
   RealTimeAccess.NewStore<User>("users", (record) => {
-    var res: User = {
-      id: record.id,
-      username: record["username"],
-      created: record.created
-    };
+    var res: User = record as any;
 
     return res;
   });
