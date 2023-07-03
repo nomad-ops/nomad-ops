@@ -245,7 +245,7 @@ export default function Nav({ mainNavItems, secondaryNavItems }: { mainNavItems:
 
             }} disableRipple>
                 <PersonIcon />
-                {auth.user ? auth.user.username : "No username"}
+                {auth.user ? (auth.user.email && auth.user.email !== "" ?  auth.user.email : auth.user.username ) : "No email/username"}
             </MenuItem>
             <Divider sx={{ my: 0.5 }} />
             <MenuItem onClick={() => {
