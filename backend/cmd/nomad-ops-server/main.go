@@ -62,6 +62,13 @@ func main() {
 
 		e.Router.Use( /* TODO */ )
 
+		app.OnRecordBeforeAuthWithOAuth2Request().Add(func(e *core.RecordAuthWithOAuth2Event) error {
+
+			logger.LogInfo(ctx, "Oauth2 User:%s", log.ToJSONString(e.OAuth2User))
+
+			return nil
+		})
+
 		set := settings.New()
 		set.Meta.AppName = env.GetStringEnv(ctx, logger, "POCKETBASE_APP_NAME", "Nomad-Ops")
 		set.Meta.AppUrl = env.GetStringEnv(ctx, logger, "POCKETBASE_APP_URL", "http://localhost:8090")
