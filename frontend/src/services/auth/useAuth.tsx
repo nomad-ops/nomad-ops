@@ -23,10 +23,7 @@ export const AuthProvider = ({ children }: { children: JSX.Element }) => {
     const login = async (username: string, password: string) => {
         return pb.collection("users").authWithPassword(username, password)
             .then((resp) => {
-                setUser({
-                    id: resp.record.id,
-                    username: username,
-                });
+                setUser(resp.record);
                 navigate("/");
             });
     };
@@ -34,10 +31,7 @@ export const AuthProvider = ({ children }: { children: JSX.Element }) => {
     const loginWithOauth2 = async (provider: string) => {
         return pb.collection('users').authWithOAuth2({ provider: provider })
             .then((resp) => {
-                setUser({
-                    id: resp.record.id,
-                    username: resp.record["username"],
-                });
+                setUser(resp.record);
                 navigate("/");
             });
     };
