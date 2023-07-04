@@ -92,11 +92,19 @@ func (c *Client) SubscribeJobChanges(ctx context.Context, cb func(jobName string
 				if err != nil {
 					return
 				}
+				if job == nil || job.ID == nil {
+					c.logger.LogInfo(ctx, "Received no Job on '%s': %s", e.Type, log.ToJSONString(e))
+					return
+				}
 
 				cb(*job.ID)
 			case "DeploymentStatusUpdate":
 				dep, err := e.Deployment()
 				if err != nil {
+					return
+				}
+				if dep == nil {
+					c.logger.LogInfo(ctx, "Received no deployment on 'DeploymentStatusUpdate': %s", log.ToJSONString(e))
 					return
 				}
 				cb(dep.JobID)
