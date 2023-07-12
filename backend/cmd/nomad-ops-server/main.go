@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -345,6 +347,41 @@ func main() {
 					return err
 				}
 			}
+
+			return nil
+		})
+
+		app.OnRecordAfterAuthWithOAuth2Request().Add(func(e *core.RecordAuthWithOAuth2Event) error {
+			logger.LogInfo(ctx, "User:%s", log.ToJSONString(e.OAuth2User))
+			req, err := http.NewRequestWithContext(ctx,
+				"GET",
+				fmt.Sprintf("%s%s?$select=department",
+					`https://graph.microsoft.com/v1.0/users/`,
+					e.OAuth2User.Id), nil)
+			if err != nil {
+				logger.LogError(ctx, "Could not get userinfo:%v", err)
+				return nil
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				logger.LogError(ctx, "Could not get userinfo:%v", err)
+				return nil
+			}
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				logger.LogError(ctx, "Could not get userinfo (readall):%v", err)
+				return nil
+			}
+
+			d := struct {
+				Department string `json:"department"`
+			}{}
+			err = json.Unmarshal(b, &d)
+			if err != nil {
+				logger.LogError(ctx, "Could not get userinfo (unmarshal):%v", err)
+				return nil
+			}
+			logger.LogInfo(ctx, "Department:%+v", d)
 
 			return nil
 		})
