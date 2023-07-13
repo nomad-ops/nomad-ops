@@ -384,6 +384,7 @@ func main() {
 					logger.LogError(ctx, "Could not CreateAzureTeamSync:GetTeam:%v", err)
 					return nil
 				}
+				t.External = true
 
 				t.UpsertUser(ctx, e.Record.Id)
 

@@ -75,6 +75,7 @@ func (s *PocketBaseStore) UpsertTeam(ctx context.Context, t *domain.Team) error 
 		record := models.NewRecord(coll)
 		record.Set("name", t.Name)
 		record.Set("members", t.MemberIDs)
+		record.Set("external", t.External)
 
 		// validate and submit (internally it calls app.Dao().SaveRecord(record) in a transaction)
 		s.logger.LogInfo(ctx, "Upserting team...%s", t.Name)

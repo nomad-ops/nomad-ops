@@ -21,6 +21,8 @@ type Team struct {
 	// Required: true
 	Name string `json:"name"`
 
+	External bool `json:"external"`
+
 	MemberIDs []string `json:"members"`
 }
 
@@ -80,6 +82,11 @@ func initTeamCollection(app core.App, usersCollection *models.Collection) (*mode
 		Options: &schema.TextOptions{
 			Max: types.Pointer(200),
 		},
+	})
+	addOrUpdateField(form, &schema.SchemaField{
+		Name:    "external",
+		Type:    schema.FieldTypeBool,
+		Options: &schema.BoolOptions{},
 	})
 	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "members",
