@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -29,6 +27,8 @@ import (
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/nomadcluster"
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/notifier"
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/sourcestore"
+	"github.com/nomad-ops/nomad-ops/backend/interfaces/teamstore"
+	"github.com/nomad-ops/nomad-ops/backend/interfaces/teamsync"
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/vaulttokenstore"
 	"github.com/nomad-ops/nomad-ops/backend/utils/env"
 	"github.com/nomad-ops/nomad-ops/backend/utils/errors"
@@ -86,6 +86,8 @@ func main() {
 			AuthUrl:      env.GetStringEnv(ctx, logger, "POCKETBASE_AUTH_MICROSOFT_AUTH_URL", ""),
 			TokenUrl:     env.GetStringEnv(ctx, logger, "POCKETBASE_AUTH_MICROSOFT_TOKEN_URL", ""),
 		}
+
+		microsoftTeamNameProperty := env.GetStringEnv(ctx, logger, "TEAM_NAME_MICROSOFT_PROPERTY", "")
 
 		err := e.App.Dao().SaveSettings(set)
 		if err != nil {
@@ -159,6 +161,17 @@ func main() {
 
 		if err != nil {
 			logger.LogError(ctx, "Could not CreatePocketBaseStore for keys:%v", err)
+			return err
+		}
+
+		teamStore, err := teamstore.CreatePocketBaseStore(ctx,
+			log.NewSimpleLogger(trace, "TeamStore-PocketBase"),
+			teamstore.PocketBaseStoreConfig{
+				App: e.App,
+			})
+
+		if err != nil {
+			logger.LogError(ctx, "Could not CreatePocketBaseStore for teams:%v", err)
 			return err
 		}
 		vaultTokenStore, err := vaulttokenstore.CreatePocketBaseStore(ctx,
@@ -352,36 +365,35 @@ func main() {
 		})
 
 		app.OnRecordAfterAuthWithOAuth2Request().Add(func(e *core.RecordAuthWithOAuth2Event) error {
-			logger.LogInfo(ctx, "User:%s", log.ToJSONString(e.OAuth2User))
-			req, err := http.NewRequestWithContext(ctx,
-				"GET",
-				fmt.Sprintf("%s%s?$select=department",
-					`https://graph.microsoft.com/v1.0/users/`,
-					e.OAuth2User.Id), nil)
-			if err != nil {
-				logger.LogError(ctx, "Could not get userinfo:%v", err)
-				return nil
-			}
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				logger.LogError(ctx, "Could not get userinfo:%v", err)
-				return nil
-			}
-			b, err := io.ReadAll(resp.Body)
-			if err != nil {
-				logger.LogError(ctx, "Could not get userinfo (readall):%v", err)
-				return nil
-			}
+			switch e.ProviderName {
+			case "microsoft":
+				ad, err := teamsync.CreateAzureTeamSync(ctx,
+					log.NewSimpleLogger(logger.IsTraceEnabled(ctx), "Microsoft-TeamSync"),
+					teamsync.AzureTeamSyncConfig{
+						TeamNameProperty: microsoftTeamNameProperty,
+					})
+				if err != nil {
+					logger.LogError(ctx, "Could not CreateAzureTeamSync:%v", err)
+					return nil
+				}
+				t, err := ad.GetTeam(ctx, e)
+				if err == errors.ErrNotFound {
+					return nil
+				}
+				if err != nil {
+					logger.LogError(ctx, "Could not CreateAzureTeamSync:GetTeam:%v", err)
+					return nil
+				}
 
-			d := struct {
-				Department string `json:"department"`
-			}{}
-			err = json.Unmarshal(b, &d)
-			if err != nil {
-				logger.LogError(ctx, "Could not get userinfo (unmarshal):%v", err)
-				return nil
+				t.UpsertUser(ctx, e.Record.Id)
+
+				err = teamStore.UpsertTeam(ctx, t)
+				if err != nil {
+					logger.LogError(ctx, "Could not UpsertTeam:%v", err)
+					return nil
+				}
+			default:
 			}
-			logger.LogInfo(ctx, "Department:%+v", d)
 
 			return nil
 		})

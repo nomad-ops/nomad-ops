@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -19,6 +20,37 @@ type Team struct {
 	// name
 	// Required: true
 	Name string `json:"name"`
+
+	MemberIDs []string `json:"members"`
+}
+
+func (t *Team) UpsertUser(ctx context.Context, userID string) {
+	for _, id := range t.MemberIDs {
+		if userID == id {
+			return
+		}
+	}
+	t.MemberIDs = append(t.MemberIDs, userID)
+}
+
+func (t *Team) MergeMembers(ctx context.Context, userIDs []string) bool {
+	unique := map[string]bool{}
+	changed := false
+	var res []string
+	for _, id := range t.MemberIDs {
+		unique[id] = true
+	}
+	for _, newID := range userIDs {
+		if ok := unique[newID]; !ok {
+			changed = true
+		}
+		unique[newID] = true
+	}
+	for id := range unique {
+		res = append(res, id)
+	}
+	t.MemberIDs = res
+	return changed
 }
 
 func initTeamCollection(app core.App, usersCollection *models.Collection) (*models.Collection, error) {
