@@ -60,7 +60,7 @@ function DashboardContent() {
 
 export default function App() {
   const navigate = useNavigate();
-  pb.collection("users").authRefresh()
+  pb.collection("users").authRefresh(undefined, { '$autoCancel': false })
   .then(() => {
 
   }, () => {

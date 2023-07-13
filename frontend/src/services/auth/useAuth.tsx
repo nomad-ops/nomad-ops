@@ -39,6 +39,7 @@ export const AuthProvider = ({ children }: { children: JSX.Element }) => {
     // call this function to sign out logged in user
     const logout = () => {
         setUser(null);
+        pb.authStore.clear();
         navigate("/login", { replace: true });
         return Promise.resolve();
     };
