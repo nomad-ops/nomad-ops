@@ -10,10 +10,12 @@ import { Key } from './domain/Key';
 import RealTimeAccess from './services/RealTimeAccess';
 import Nav from './components/Nav';
 import { Outlet } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 import { Source } from './domain/Source';
 import { Team } from './domain/Team';
 import { User } from './domain/User';
 import { VaultToken } from './domain/VaultToken';
+import pb from './services/PocketBase';
 
 function Copyright(props: any) {
   return (
@@ -57,6 +59,13 @@ function DashboardContent() {
 }
 
 export default function App() {
+  const navigate = useNavigate();
+  pb.collection("users").authRefresh()
+  .then(() => {
+
+  }, () => {
+    navigate("/login");
+  });
 
   // Initialize stores ...
   RealTimeAccess.NewStore<User>("users", (record) => {

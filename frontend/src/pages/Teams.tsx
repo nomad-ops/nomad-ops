@@ -4,24 +4,14 @@ import { Subscription } from 'rxjs';
 import { Team } from '../domain/Team';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RealTimeAccess from '../services/RealTimeAccess';
-import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Paper, Stack, TextField } from '@mui/material';
-import { orange, red, teal } from '@mui/material/colors';
-import CheckIcon from '@mui/icons-material/Check';
-import ErrorIcon from '@mui/icons-material/Error';
-import LoopIcon from '@mui/icons-material/Loop';
+import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Paper, Stack, TextField } from '@mui/material';
+import { teal } from '@mui/material/colors';
 import AddIcon from '@mui/icons-material/Add';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
-import SyncIcon from '@mui/icons-material/Sync';
-import NotStartedIcon from '@mui/icons-material/NotStarted';
-import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
-import QuestionMarkIcon from '@mui/icons-material/QuestionMark';
-import PauseIcon from '@mui/icons-material/Pause';
 import { useForm } from "react-hook-form";
 import TeamService from '../services/TeamService';
 import NotificationService from '../services/NotificationService';
-import { Key } from '../domain/Key';
 import { FormInputText } from '../components/form-components/FormInputText';
-import { FormInputDropdown } from '../components/form-components/FormInputDropdown';
 import { FormInputMultiCheckbox } from '../components/form-components/FormInputMultiCheckbox';
 import { User } from '../domain/User';
 
@@ -220,7 +210,7 @@ export default function Teams() {
                                 }).map((u) => {
                                     return <ListItem key={u.id} alignItems="flex-start" dense={true} disablePadding={true}>
                                         <ListItemText
-                                            primary={u.username}
+                                            primary={u.email ? u.email : u.username}
                                             sx={{
                                                 fontWeight: "bold"
                                             }}
@@ -313,7 +303,7 @@ export default function Teams() {
                     setValue={setValue}
                     options={users ? users.map((t) => {
                         return {
-                            label: t.username,
+                            label: t.email ? t.email : t.username,
                             value: t.id as string
                         }
                     }) : []} />
@@ -338,7 +328,7 @@ export default function Teams() {
                     options={users ? users.map((t) => {
                         const len = openEditMembers?.members?.filter((inner) => { return inner === t.id; })
                         return {
-                            label: t.username,
+                            label: t.email ? t.email : t.username,
                             value: t.id as string,
                             selected: len ? len.length > 0 : false
                         }
