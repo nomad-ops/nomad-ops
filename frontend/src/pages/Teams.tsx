@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Grid from '@mui/material/Grid';
 import { Subscription } from 'rxjs';
-import { Team } from '../domain/Team';
+import { Team, userIsTeamMember } from '../domain/Team';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RealTimeAccess from '../services/RealTimeAccess';
 import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Paper, Stack, TextField } from '@mui/material';
@@ -14,6 +14,7 @@ import NotificationService from '../services/NotificationService';
 import { FormInputText } from '../components/form-components/FormInputText';
 import { FormInputMultiCheckbox } from '../components/form-components/FormInputMultiCheckbox';
 import { User } from '../domain/User';
+import { useAuth } from '../services/auth/useAuth';
 
 interface ITeamFormInput {
     name: string;
@@ -34,6 +35,7 @@ const defaultEditMembersValues = {
 };
 
 export default function Teams() {
+    const auth = useAuth();
     const [open, setOpen] = React.useState(false);
 
     const handleClickOpen = () => {
@@ -219,7 +221,7 @@ export default function Teams() {
                                 }) : undefined}
                             </List>
                         </CardContent>
-                        <CardActions disableSpacing >
+                        {auth.user && userIsTeamMember(k, auth.user.id) ? <CardActions disableSpacing >
                             <span style={{ flexGrow: "1" }}></span>
                             <Tooltip title="Edit members">
                                 <IconButton aria-label="members" color='primary' onClick={() => {
@@ -252,7 +254,7 @@ export default function Teams() {
                                     <DeleteIcon />
                                 </IconButton>
                             </Tooltip>
-                        </CardActions>
+                        </CardActions> : undefined}
                     </Card>
                 </Grid>
             }) : undefined}

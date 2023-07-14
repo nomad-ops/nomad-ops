@@ -452,6 +452,43 @@ func main() {
 							})
 						}
 
+						rec, err := app.Dao().FindRecordById("sources", id)
+						if err != nil {
+							return err
+						}
+
+						teamIDs := rec.GetStringSlice("teams")
+
+						if len(teamIDs) == 0 {
+							// No team "owns" this source
+							// anybody may sync
+							return next(c)
+						}
+
+						found := false
+						for _, teamID := range teamIDs {
+							teamRec, err := app.Dao().FindRecordById("teams", teamID)
+							if err != nil {
+								return err
+							}
+
+							members := teamRec.GetStringSlice("members")
+							for _, member := range members {
+								if member == authRecord.Id {
+									found = true
+									break
+								}
+							}
+							if found {
+								break
+							}
+						}
+
+						if !found {
+							// This source is owned by at least one team and the authenticated user is NOT part of that
+							return apis.NewForbiddenError("Only team members can trigger a sync", nil)
+						}
+						// User is part of a team that owns this source
 						return next(c)
 					}
 				},

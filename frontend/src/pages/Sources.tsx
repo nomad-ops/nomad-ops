@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Grid from '@mui/material/Grid';
 import { Subscription } from 'rxjs';
-import { Source } from '../domain/Source';
+import { Source, userIsSourceMember } from '../domain/Source';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RealTimeAccess from '../services/RealTimeAccess';
 import { Card, CardHeader, CardContent, Typography, CardActions, IconButton, Avatar, Divider, List, ListItem, ListItemText, Fab, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Tooltip, Container, Skeleton, Chip, Paper, Stack, TextField } from '@mui/material';
@@ -673,7 +673,7 @@ export default function Sources() {
                             </List>
                             <span style={{ flexGrow: "1" }}></span>
 
-                            <Tooltip title="Edit teams">
+                            { teams && auth.user && userIsSourceMember(k, teams, auth.user.id) ?  <div><Tooltip title="Edit teams">
                                 <IconButton aria-label="teams" color='primary' onClick={() => {
                                     if (!k.id) {
                                         return;
@@ -740,7 +740,7 @@ export default function Sources() {
                                 }}>
                                     <DeleteIcon />
                                 </IconButton>
-                            </Tooltip>
+                            </Tooltip></div>: undefined }
                         </CardActions>
                     </Card>
                 </Grid>

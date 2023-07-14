@@ -19,19 +19,6 @@ const MenuProps = {
     },
 };
 
-const names = [
-    'Oliver Hansen',
-    'Van Henry',
-    'April Tucker',
-    'Ralph Hubbard',
-    'Omar Alexander',
-    'Carlos Abbott',
-    'Miriam Wagner',
-    'Bradley Wilkerson',
-    'Virginia Andrews',
-    'Kelly Snyder',
-];
-
 export default function TeamFilter({ teams, userID, onChange }: { teams: Team[] | undefined, userID: string | undefined, onChange: (selectedTeams: Team[]) => void }) {
     const [selectedTeams, setSelectedTeams] = React.useState<Team[]>([]);
 
