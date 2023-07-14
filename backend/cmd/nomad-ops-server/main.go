@@ -364,6 +364,21 @@ func main() {
 			return nil
 		})
 
+		app.OnModelBeforeCreate().Add(func(e *core.ModelEvent) error {
+			if e.Model.TableName() == "users" {
+				record, ok := e.Model.(*models.Record)
+				if !ok {
+					logger.LogError(ctx, "Model is no record %s - %T: %s", e.Model.GetId(), e.Model, log.ToJSONString(e.Model))
+					return nil
+				}
+				err := record.SetEmailVisibility(true)
+				if err != nil {
+					logger.LogError(ctx, "Could not SetEmailVisibility:%v", err)
+				}
+			}
+			return nil
+		})
+
 		app.OnRecordAfterAuthWithOAuth2Request().Add(func(e *core.RecordAuthWithOAuth2Event) error {
 			switch e.ProviderName {
 			case "microsoft":
