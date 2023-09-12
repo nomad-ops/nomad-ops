@@ -187,7 +187,7 @@ func (g *GitProvider) FetchDesiredState(ctx context.Context, src *domain.Source)
 			j, err := g.parser.ParseJob(ctx, string(jobData))
 			if err != nil {
 				g.logger.LogError(ctx, "Could not parse JobFile:%v - %v", file.Name(), err)
-				continue
+				return nil, err
 			}
 			j.GitInfo = gitInfo
 			desiredState.Jobs[*j.Name] = j
