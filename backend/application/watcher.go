@@ -231,6 +231,11 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 		waitTime := w.cfg.Interval
 
 		for {
+			select {
+			case <-wi.ctx.Done():
+				return
+			default:
+			}
 			if !firstRun {
 				metrics.GetOrCreateCounter("nomad_ops_reconciliations_counter" +
 					fmt.Sprintf(`{app="%s",repo_url="%s",repo_branch="%s",nomad_namespace="%s",nomad_dc="%s",key_id="%s",repo_path="%s",has_error="%v"}`,

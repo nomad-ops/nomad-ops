@@ -33,6 +33,7 @@ import (
 	"github.com/nomad-ops/nomad-ops/backend/utils/env"
 	"github.com/nomad-ops/nomad-ops/backend/utils/errors"
 	"github.com/nomad-ops/nomad-ops/backend/utils/log"
+	mon "github.com/nomad-ops/nomad-ops/backend/utils/vmmonitor"
 )
 
 //go:embed wwwroot/**
@@ -62,8 +63,6 @@ func main() {
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 
-		e.Router.Use( /* TODO */ )
-
 		set := settings.New()
 		set.Meta.AppName = env.GetStringEnv(ctx, logger, "POCKETBASE_APP_NAME", "Nomad-Ops")
 		set.Meta.AppUrl = env.GetStringEnv(ctx, logger, "POCKETBASE_APP_URL", "http://localhost:8090")
@@ -90,6 +89,11 @@ func main() {
 		microsoftTeamNameProperty := env.GetStringEnv(ctx, logger, "TEAM_NAME_MICROSOFT_PROPERTY", "")
 
 		err := e.App.Dao().SaveSettings(set)
+		if err != nil {
+			return err
+		}
+
+		err = e.App.RefreshSettings()
 		if err != nil {
 			return err
 		}
@@ -585,6 +589,12 @@ func main() {
 
 		logger.LogInfo(ctx, "Initialization done")
 
+		_, err = mon.StartMon(ctx, log.NewSimpleLogger(logger.IsTraceEnabled(ctx), "Monitor"), mon.Config{
+			Address: env.GetStringEnv(ctx, logger, "MONITOR_ADDRESS", ":8080"),
+		})
+		if err != nil {
+			return err
+		}
 		return nil
 	})
 
