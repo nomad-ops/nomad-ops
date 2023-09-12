@@ -72,8 +72,8 @@ func initTeamCollection(app core.App, usersCollection *models.Collection) (*mode
 	form.ListRule = types.Pointer("@request.auth.id != ''")
 	form.ViewRule = types.Pointer("@request.auth.id != ''")
 	form.CreateRule = types.Pointer("@request.auth.id != ''")
-	form.UpdateRule = types.Pointer("@request.auth.id != '' && (members:length = 0 || members.id = @request.auth.id)")
-	form.DeleteRule = types.Pointer("@request.auth.id != '' && (members:length = 0 || members.id = @request.auth.id)")
+	form.UpdateRule = types.Pointer("@request.auth.id != '' && (members:length = 0 || members.id ?= @request.auth.id)")
+	form.DeleteRule = types.Pointer("@request.auth.id != '' && (members:length = 0 || members.id ?= @request.auth.id)")
 
 	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "name",
