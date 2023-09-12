@@ -123,7 +123,7 @@ func initSourceCollection(app core.App,
 	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "dataCenter",
 		Type:     schema.FieldTypeText,
-		Required: true,
+		Required: false,
 		Options: &schema.TextOptions{
 			Max: types.Pointer(100),
 		},

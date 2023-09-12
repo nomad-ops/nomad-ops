@@ -799,7 +799,7 @@ export default function Sources() {
                 <FormInputText
                     name="dataCenter"
                     control={control}
-                    required={true}
+                    required={false}
                     label="Data Center" />
                 <FormInputText
                     name="namespace"
