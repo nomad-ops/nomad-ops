@@ -181,9 +181,17 @@ func (c *Client) ParseJob(ctx context.Context, j string) (*application.JobInfo, 
 	}, nil
 }
 
-func (c *Client) getQueryOptsCtx(ctx context.Context, src *domain.Source) *api.QueryOptions {
+func (c *Client) getQueryOptsCtx(ctx context.Context, src *domain.Source, job *application.JobInfo) *api.QueryOptions {
 
 	opts := api.QueryOptions{}
+	if job != nil && job.Namespace != nil && *job.Namespace != "" {
+		opts.Namespace = *job.Namespace
+	}
+	if job != nil && job.Region != nil && *job.Region != "" {
+		opts.Region = *job.Region
+	}
+
+	// Src overrides job
 	if src.Namespace != "" {
 		opts.Namespace = src.Namespace
 	}
@@ -194,9 +202,17 @@ func (c *Client) getQueryOptsCtx(ctx context.Context, src *domain.Source) *api.Q
 	return &opts
 }
 
-func (c *Client) getWriteOptions(ctx context.Context, src *domain.Source) *api.WriteOptions {
+func (c *Client) getWriteOptions(ctx context.Context, src *domain.Source, job *application.JobInfo) *api.WriteOptions {
 
 	opts := api.WriteOptions{}
+	if job != nil && job.Namespace != nil && *job.Namespace != "" {
+		opts.Namespace = *job.Namespace
+	}
+	if job != nil && job.Region != nil && *job.Region != "" {
+		opts.Region = *job.Region
+	}
+
+	// Src overrides job
 	if src.Namespace != "" {
 		opts.Namespace = src.Namespace
 	}
@@ -213,16 +229,17 @@ func (c *Client) UpdateJob(ctx context.Context,
 	restart bool) (*application.UpdateJobInfo, error) {
 
 	if src.CreateNamespace {
-		if job.Namespace == nil {
+		writeOptions := c.getWriteOptions(ctx, src, job)
+		if writeOptions.Namespace == "" {
 			return nil, fmt.Errorf("require a namespace to be set in conjunction with 'CreateNamespace'")
 		}
 		// Make sure that namespace exists
 		_, err := c.client.Namespaces().Register(&api.Namespace{
-			Name: *job.Namespace,
+			Name: writeOptions.Namespace,
 			Meta: map[string]string{
 				metaKeyOps: "true",
 			},
-		}, c.getWriteOptions(ctx, src))
+		}, c.getWriteOptions(ctx, src, job))
 		if err != nil {
 			return nil, err
 		}
@@ -244,7 +261,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 	}
 
 	job.Meta = metadata
-	resp, _, err := c.client.Jobs().Plan(job.Job, true, c.getWriteOptions(ctx, src))
+	resp, _, err := c.client.Jobs().Plan(job.Job, true, c.getWriteOptions(ctx, src, job))
 
 	if err != nil {
 		return nil, err
@@ -252,7 +269,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 
 	deploymentStatus := ""
 
-	deployment, _, err := c.client.Jobs().LatestDeployment(*job.ID, c.getQueryOptsCtx(ctx, src))
+	deployment, _, err := c.client.Jobs().LatestDeployment(*job.ID, c.getQueryOptsCtx(ctx, src, job))
 	if err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "not found") {
 			// low effort "not found" detection
@@ -277,7 +294,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 	c.logger.LogInfo(ctx, "Job Diff:%v", log.ToJSONString(resp.Diff))
 
 	if !src.Paused {
-		regResp, _, err := c.client.Jobs().Register(job.Job, c.getWriteOptions(ctx, src))
+		regResp, _, err := c.client.Jobs().Register(job.Job, c.getWriteOptions(ctx, src, job))
 		if err != nil {
 			return nil, err
 		}
@@ -295,7 +312,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 
 func (c *Client) DeleteJob(ctx context.Context, src *domain.Source, job *application.JobInfo) error {
 
-	_, _, err := c.client.Jobs().Deregister(*job.Job.Name, false, c.getWriteOptions(ctx, src))
+	_, _, err := c.client.Jobs().Deregister(*job.Job.Name, false, c.getWriteOptions(ctx, src, job))
 
 	if err != nil {
 		return err
@@ -312,7 +329,9 @@ func (c *Client) GetCurrentClusterState(ctx context.Context,
 	opts application.GetCurrentClusterStateOptions) (*application.ClusterState, error) {
 
 	// TODO add filter to match only jobs with valid meta
-	joblist, _, err := c.client.Jobs().List(c.getQueryOptsCtx(ctx, opts.Source))
+	joblist, _, err := c.client.Jobs().List(&api.QueryOptions{
+		Namespace: "*", // Query all authorized namespaces
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +341,9 @@ func (c *Client) GetCurrentClusterState(ctx context.Context,
 	}
 
 	for _, job := range joblist {
-		j, _, err := c.client.Jobs().Info(job.Name, c.getQueryOptsCtx(ctx, opts.Source))
+		j, _, err := c.client.Jobs().Info(job.Name, &api.QueryOptions{
+			Namespace: job.Namespace,
+		})
 		if err != nil {
 			return nil, err
 		}
