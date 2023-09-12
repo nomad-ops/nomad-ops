@@ -37,8 +37,8 @@ export default function SourceDetailDrawer({ open, onClose, source }: {
         const promiseArray: Promise<JobInfo>[] = [];
         for (let i = 0; i < keys.length; i++) {
             const element = keys[i];
-            promiseArray.push(Promise.all([NomadService.getJobSummary(element, source.namespace as string),
-            NomadService.listAllocations(element, source.namespace as string)])
+            promiseArray.push(Promise.all([NomadService.getJobSummary(element, source.status.jobs[element].namespace as string),
+            NomadService.listAllocations(element, source.status.jobs[element].namespace as string)])
                 .then((results) => {
                     const taskGroups = Object.keys(results[0].Summary);
                     return {

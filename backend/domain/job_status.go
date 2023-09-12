@@ -17,4 +17,7 @@ type JobStatus struct {
 
 	// type
 	Type string `json:"type,omitempty"`
+
+	// namespace
+	Namespace string `json:"namespace,omitempty"`
 }
