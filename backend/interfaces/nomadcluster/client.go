@@ -70,12 +70,14 @@ func (c *Client) SubscribeJobChanges(ctx context.Context, cb func(jobName string
 		index = meta.LastIndex
 	}
 
+	queryOptions := &api.QueryOptions{
+		Namespace: "*",
+	}
+
 	eventCh, err := c.client.EventStream().Stream(ctx, map[api.Topic][]string{
 		api.TopicJob:        {"*"},
 		api.TopicDeployment: {"*"},
-	}, index, &api.QueryOptions{
-		Namespace: "*",
-	})
+	}, index, queryOptions.WithContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -183,7 +185,7 @@ func (c *Client) ParseJob(ctx context.Context, j string) (*application.JobInfo, 
 
 func (c *Client) getQueryOptsCtx(ctx context.Context, src *domain.Source, job *application.JobInfo) *api.QueryOptions {
 
-	opts := api.QueryOptions{}
+	opts := &api.QueryOptions{}
 	if job != nil && job.Namespace != nil && *job.Namespace != "" {
 		opts.Namespace = *job.Namespace
 	}
@@ -199,12 +201,12 @@ func (c *Client) getQueryOptsCtx(ctx context.Context, src *domain.Source, job *a
 		opts.Region = src.Region
 	}
 
-	return &opts
+	return opts.WithContext(ctx)
 }
 
 func (c *Client) getWriteOptions(ctx context.Context, src *domain.Source, job *application.JobInfo) *api.WriteOptions {
 
-	opts := api.WriteOptions{}
+	opts := &api.WriteOptions{}
 	if job != nil && job.Namespace != nil && *job.Namespace != "" {
 		opts.Namespace = *job.Namespace
 	}
@@ -220,7 +222,7 @@ func (c *Client) getWriteOptions(ctx context.Context, src *domain.Source, job *a
 		opts.Region = src.Region
 	}
 
-	return &opts
+	return opts.WithContext(ctx)
 }
 
 func (c *Client) UpdateJob(ctx context.Context,
@@ -329,10 +331,11 @@ func (c *Client) GetURL(ctx context.Context) (string, error) {
 func (c *Client) GetCurrentClusterState(ctx context.Context,
 	opts application.GetCurrentClusterStateOptions) (*application.ClusterState, error) {
 
-	// TODO add filter to match only jobs with valid meta
-	joblist, _, err := c.client.Jobs().List(&api.QueryOptions{
+	queryOptions := &api.QueryOptions{
 		Namespace: "*", // Query all authorized namespaces
-	})
+	}
+	// TODO add filter to match only jobs with valid meta
+	joblist, _, err := c.client.Jobs().List(queryOptions.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -342,9 +345,11 @@ func (c *Client) GetCurrentClusterState(ctx context.Context,
 	}
 
 	for _, job := range joblist {
-		j, _, err := c.client.Jobs().Info(job.Name, &api.QueryOptions{
+		queryOptions := &api.QueryOptions{
 			Namespace: job.Namespace,
-		})
+		}
+
+		j, _, err := c.client.Jobs().Info(job.Name, queryOptions.WithContext(ctx))
 		if err != nil {
 			return nil, err
 		}
