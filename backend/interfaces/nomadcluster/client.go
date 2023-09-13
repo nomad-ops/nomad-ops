@@ -83,7 +83,7 @@ func (c *Client) SubscribeJobChanges(ctx context.Context, cb func(jobName string
 	eventHandler := func(event *api.Events) {
 		for _, e := range event.Events {
 
-			c.logger.LogInfo(ctx, "Received nomad event:%v", e.Type)
+			c.logger.LogTrace(ctx, "Received nomad event:%v", e.Type)
 
 			switch e.Type {
 			case "JobRegistered", "JobDeregistered":
