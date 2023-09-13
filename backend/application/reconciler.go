@@ -80,6 +80,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 		Source: src,
 	})
 	if err != nil {
+		r.logger.LogError(ctx, "Failed to get current cluster state: %v - %v - %v", err, src.URL, src.Path)
 		return nil, err
 	}
 
@@ -126,6 +127,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			r.logger.LogInfo(ctx, "Found job %s that is no longer desired. Deleting...", k)
 			err := r.clusterAccess.DeleteJob(ctx, src, job)
 			if err != nil {
+				r.logger.LogError(ctx, "Failed to DeleteJob: %v - %v - %v - %v", err, src.URL, src.Path, *job.Name)
 				return nil, err
 			}
 
@@ -151,7 +153,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 		r.logger.LogTrace(ctx, "Updating job %v...%+v", strPtrToStr(job.Name), log.ToJSONString(job))
 		info, err := r.clusterAccess.UpdateJob(ctx, src, job, restart)
 		if err != nil {
-			r.logger.LogInfo(ctx, "Could not UpdateJob %v", log.ToJSONString(job))
+			r.logger.LogError(ctx, "Could not UpdateJob %v", log.ToJSONString(job))
 			return nil, err
 		}
 

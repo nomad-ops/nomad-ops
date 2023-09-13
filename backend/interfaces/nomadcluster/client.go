@@ -333,8 +333,11 @@ func (c *Client) GetCurrentClusterState(ctx context.Context,
 
 	queryOptions := &api.QueryOptions{
 		Namespace: "*", // Query all authorized namespaces
+		Params: map[string]string{
+			"meta": "true",
+		},
+		Filter: fmt.Sprintf(`"nomadopssrcid" in Meta and Meta["nomadopssrcid"] == "%s"`, opts.Source.ID),
 	}
-	// TODO add filter to match only jobs with valid meta
 	joblist, _, err := c.client.Jobs().List(queryOptions.WithContext(ctx))
 	if err != nil {
 		return nil, err
@@ -345,16 +348,7 @@ func (c *Client) GetCurrentClusterState(ctx context.Context,
 	}
 
 	for _, job := range joblist {
-		queryOptions := &api.QueryOptions{
-			Namespace: job.Namespace,
-		}
-
-		j, _, err := c.client.Jobs().Info(job.Name, queryOptions.WithContext(ctx))
-		if err != nil {
-			return nil, err
-		}
-
-		m := j.Meta
+		m := job.Meta
 		// Ignore stuff that is not managed by us
 		if len(m) == 0 {
 			continue
@@ -362,6 +356,15 @@ func (c *Client) GetCurrentClusterState(ctx context.Context,
 		// only consider jobs with my source id!
 		if m[metaKeySrcID] != opts.Source.ID {
 			continue
+		}
+
+		queryOptions := &api.QueryOptions{
+			Namespace: job.Namespace,
+		}
+
+		j, _, err := c.client.Jobs().Info(job.Name, queryOptions.WithContext(ctx))
+		if err != nil {
+			return nil, err
 		}
 
 		clusterState.CurrentJobs[job.Name] = &application.JobInfo{
