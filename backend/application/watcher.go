@@ -448,7 +448,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				continue
 			}
 
-			status, changeInfo, err := wi.Reconciler(wi.ctx, wi.Source, desiredState, restart)
+			changeInfo, err := wi.Reconciler(wi.ctx, wi.Source, desiredState, restart)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not Reconcile: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
 				err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
@@ -556,19 +556,19 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			}
 
 			if wi.Source.Paused {
-				status.Status = domain.SourceStatusStatusSynced
+				wi.Source.Status.Status = domain.SourceStatusStatusSynced
 				msg := "Still in sync"
 				if len(changeInfo.Create) > 0 || len(changeInfo.Update) > 0 || len(changeInfo.Delete) > 0 {
 					msg = fmt.Sprintf("Out of sync: %d to create, %d to update, %d to delete",
 						len(changeInfo.Create), len(changeInfo.Update), len(changeInfo.Delete))
-					status.Status = domain.SourceStatusStatusOutOfSync
+					wi.Source.Status.Status = domain.SourceStatusStatusOutOfSync
 				}
-				status.Message = msg
+				wi.Source.Status.Message = msg
 			}
 
-			status.DetermineSyncStatus()
+			wi.Source.Status.DetermineSyncStatus()
 
-			err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, status)
+			err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, wi.Source.Status)
 			if err != nil {
 				w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 			}

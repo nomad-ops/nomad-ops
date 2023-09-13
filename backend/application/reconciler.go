@@ -68,18 +68,18 @@ type ChangeInfo struct {
 type ReconcilerFunc func(ctx context.Context,
 	src *domain.Source,
 	desiredState *DesiredState,
-	restart bool) (*domain.SourceStatus, *ChangeInfo, error)
+	restart bool) (*ChangeInfo, error)
 
 func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 	src *domain.Source,
 	desiredState *DesiredState,
-	restart bool) (*domain.SourceStatus, *ChangeInfo, error) {
+	restart bool) (*ChangeInfo, error) {
 
 	currentState, err := r.clusterAccess.GetCurrentClusterState(ctx, GetCurrentClusterStateOptions{
 		Source: src,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	changed := &ChangeInfo{
@@ -89,11 +89,14 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 		Update: map[string]*JobInfo{},
 	}
 
-	res := &domain.SourceStatus{
-		Jobs:          map[string]domain.JobStatus{},
-		Status:        domain.SourceStatusStatusSynced,
-		LastCheckTime: toTimePtr(time.Now()),
+	if src.Status == nil {
+		src.Status = &domain.SourceStatus{}
 	}
+
+	src.Status.Jobs = map[string]domain.JobStatus{}
+	src.Status.Status = domain.SourceStatusStatusSynced
+	src.Status.LastCheckTime = toTimePtr(time.Now())
+	src.Status.Message = ""
 
 	for k, job := range currentState.CurrentJobs {
 		if _, ok := desiredState.Jobs[k]; !ok {
@@ -122,11 +125,11 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			r.logger.LogInfo(ctx, "Found job %s that is no longer desired. Deleting...", k)
 			err := r.clusterAccess.DeleteJob(ctx, src, job)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 
 			// we have a change
-			res.LastUpdateTime = toTimePtr(time.Now())
+			src.Status.LastUpdateTime = toTimePtr(time.Now())
 
 			ev := &domain.Event{
 				ID:        uuid.New().String(),
@@ -148,7 +151,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 		info, err := r.clusterAccess.UpdateJob(ctx, src, job, restart)
 		if err != nil {
 			r.logger.LogInfo(ctx, "Could not UpdateJob %v", log.ToJSONString(job))
-			return nil, nil, err
+			return nil, err
 		}
 
 		jobStatus := domain.JobStatus{
@@ -183,7 +186,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			jobStatus.Groups[strPtrToStr(tg.Name)] = groupStatus
 		}
 
-		res.Jobs[strPtrToStr(job.Name)] = jobStatus
+		src.Status.Jobs[strPtrToStr(job.Name)] = jobStatus
 
 		r.logger.LogTrace(ctx, "Updating job %v...Done", strPtrToStr(job.Name))
 
@@ -193,7 +196,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 		}
 
 		// we have a change
-		res.LastUpdateTime = toTimePtr(time.Now())
+		src.Status.LastUpdateTime = toTimePtr(time.Now())
 
 		if info.Created {
 			cpy := job
@@ -279,7 +282,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 		}
 	}
 
-	return res, changed, nil
+	return changed, nil
 }
 
 func toTimePtr(t time.Time) *time.Time {
