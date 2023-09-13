@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -67,6 +66,7 @@ func (api *realtimeApi) connect(c echo.Context) error {
 	connectEvent := &core.RealtimeConnectEvent{
 		HttpContext: c,
 		Client:      client,
+		IdleTimeout: 5 * time.Minute,
 	}
 
 	if err := api.app.OnRealtimeConnectRequest().Trigger(connectEvent); err != nil {
@@ -83,16 +83,18 @@ func (api *realtimeApi) connect(c echo.Context) error {
 		Client:      client,
 		Message: &subscriptions.Message{
 			Name: "PB_CONNECT",
-			Data: `{"clientId":"` + client.Id() + `"}`,
+			Data: []byte(`{"clientId":"` + client.Id() + `"}`),
 		},
 	}
 	connectMsgErr := api.app.OnRealtimeBeforeMessageSend().Trigger(connectMsgEvent, func(e *core.RealtimeMessageEvent) error {
 		w := e.HttpContext.Response()
-		fmt.Fprint(w, "id:"+client.Id()+"\n")
-		fmt.Fprint(w, "event:"+e.Message.Name+"\n")
-		fmt.Fprint(w, "data:"+e.Message.Data+"\n\n")
+		w.Write([]byte("id:" + client.Id() + "\n"))
+		w.Write([]byte("event:" + e.Message.Name + "\n"))
+		w.Write([]byte("data:"))
+		w.Write(e.Message.Data)
+		w.Write([]byte("\n\n"))
 		w.Flush()
-		return nil
+		return api.app.OnRealtimeAfterMessageSend().Trigger(e)
 	})
 	if connectMsgErr != nil {
 		if api.app.IsDebug() {
@@ -100,13 +102,10 @@ func (api *realtimeApi) connect(c echo.Context) error {
 		}
 		return nil
 	}
-	if err := api.app.OnRealtimeAfterMessageSend().Trigger(connectMsgEvent); err != nil && api.app.IsDebug() {
-		log.Println("OnRealtimeAfterMessageSend PB_CONNECT error:", err)
-	}
 
 	// start an idle timer to keep track of inactive/forgotten connections
-	idleDuration := 5 * time.Minute
-	idleTimer := time.NewTimer(idleDuration)
+	idleTimeout := connectEvent.IdleTimeout
+	idleTimer := time.NewTimer(idleTimeout)
 	defer idleTimer.Stop()
 
 	for {
@@ -129,11 +128,13 @@ func (api *realtimeApi) connect(c echo.Context) error {
 			}
 			msgErr := api.app.OnRealtimeBeforeMessageSend().Trigger(msgEvent, func(e *core.RealtimeMessageEvent) error {
 				w := e.HttpContext.Response()
-				fmt.Fprint(w, "id:"+e.Client.Id()+"\n")
-				fmt.Fprint(w, "event:"+e.Message.Name+"\n")
-				fmt.Fprint(w, "data:"+e.Message.Data+"\n\n")
+				w.Write([]byte("id:" + e.Client.Id() + "\n"))
+				w.Write([]byte("event:" + e.Message.Name + "\n"))
+				w.Write([]byte("data:"))
+				w.Write(e.Message.Data)
+				w.Write([]byte("\n\n"))
 				w.Flush()
-				return nil
+				return api.app.OnRealtimeAfterMessageSend().Trigger(msgEvent)
 			})
 			if msgErr != nil {
 				if api.app.IsDebug() {
@@ -142,12 +143,8 @@ func (api *realtimeApi) connect(c echo.Context) error {
 				return nil
 			}
 
-			if err := api.app.OnRealtimeAfterMessageSend().Trigger(msgEvent); err != nil && api.app.IsDebug() {
-				log.Println("OnRealtimeAfterMessageSend error:", err)
-			}
-
 			idleTimer.Stop()
-			idleTimer.Reset(idleDuration)
+			idleTimer.Reset(idleTimeout)
 		case <-c.Request().Context().Done():
 			// connection is closed
 			if api.app.IsDebug() {
@@ -191,7 +188,7 @@ func (api *realtimeApi) setSubscriptions(c echo.Context) error {
 		Subscriptions: form.Subscriptions,
 	}
 
-	handlerErr := api.app.OnRealtimeBeforeSubscribeRequest().Trigger(event, func(e *core.RealtimeSubscribeEvent) error {
+	return api.app.OnRealtimeBeforeSubscribeRequest().Trigger(event, func(e *core.RealtimeSubscribeEvent) error {
 		// update auth state
 		e.Client.Set(ContextAdminKey, e.HttpContext.Get(ContextAdminKey))
 		e.Client.Set(ContextAuthRecordKey, e.HttpContext.Get(ContextAuthRecordKey))
@@ -202,14 +199,14 @@ func (api *realtimeApi) setSubscriptions(c echo.Context) error {
 		// subscribe to the new subscriptions
 		e.Client.Subscribe(e.Subscriptions...)
 
-		return e.HttpContext.NoContent(http.StatusNoContent)
+		return api.app.OnRealtimeAfterSubscribeRequest().Trigger(event, func(e *core.RealtimeSubscribeEvent) error {
+			if e.HttpContext.Response().Committed {
+				return nil
+			}
+
+			return e.HttpContext.NoContent(http.StatusNoContent)
+		})
 	})
-
-	if handlerErr == nil {
-		api.app.OnRealtimeAfterSubscribeRequest().Trigger(event)
-	}
-
-	return handlerErr
 }
 
 // updateClientsAuthModel updates the existing clients auth model with the new one (matched by ID).
@@ -269,7 +266,7 @@ func (api *realtimeApi) bindEvents() {
 
 	api.app.OnModelAfterCreate().PreAdd(func(e *core.ModelEvent) error {
 		if record := api.resolveRecord(e.Model); record != nil {
-			if err := api.broadcastRecord("create", record); err != nil && api.app.IsDebug() {
+			if err := api.broadcastRecord("create", record, false); err != nil && api.app.IsDebug() {
 				log.Println(err)
 			}
 		}
@@ -278,7 +275,7 @@ func (api *realtimeApi) bindEvents() {
 
 	api.app.OnModelAfterUpdate().PreAdd(func(e *core.ModelEvent) error {
 		if record := api.resolveRecord(e.Model); record != nil {
-			if err := api.broadcastRecord("update", record); err != nil && api.app.IsDebug() {
+			if err := api.broadcastRecord("update", record, false); err != nil && api.app.IsDebug() {
 				log.Println(err)
 			}
 		}
@@ -287,7 +284,16 @@ func (api *realtimeApi) bindEvents() {
 
 	api.app.OnModelBeforeDelete().Add(func(e *core.ModelEvent) error {
 		if record := api.resolveRecord(e.Model); record != nil {
-			if err := api.broadcastRecord("delete", record); err != nil && api.app.IsDebug() {
+			if err := api.broadcastRecord("delete", record, true); err != nil && api.app.IsDebug() {
+				log.Println(err)
+			}
+		}
+		return nil
+	})
+
+	api.app.OnModelAfterDelete().Add(func(e *core.ModelEvent) error {
+		if record := api.resolveRecord(e.Model); record != nil {
+			if err := api.broadcastDryCachedRecord("delete", record); err != nil && api.app.IsDebug() {
 				log.Println(err)
 			}
 		}
@@ -340,12 +346,12 @@ func (api *realtimeApi) canAccessRecord(client subscriptions.Client, record *mod
 		}
 
 		// mock request data
-		requestData := &models.RequestData{
+		requestInfo := &models.RequestInfo{
 			Method: "GET",
 		}
-		requestData.AuthRecord, _ = client.Get(ContextAuthRecordKey).(*models.Record)
+		requestInfo.AuthRecord, _ = client.Get(ContextAuthRecordKey).(*models.Record)
 
-		resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), record.Collection(), requestData, true)
+		resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), record.Collection(), requestInfo, true)
 		expr, err := search.FilterData(*accessRule).BuildExpr(resolver)
 		if err != nil {
 			return err
@@ -369,7 +375,7 @@ type recordData struct {
 	Record *models.Record `json:"record"`
 }
 
-func (api *realtimeApi) broadcastRecord(action string, record *models.Record) error {
+func (api *realtimeApi) broadcastRecord(action string, record *models.Record, dryCache bool) error {
 	collection := record.Collection()
 	if collection == nil {
 		return errors.New("Record collection not set.")
@@ -401,13 +407,8 @@ func (api *realtimeApi) broadcastRecord(action string, record *models.Record) er
 
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
-		if api.app.IsDebug() {
-			log.Println(err)
-		}
 		return err
 	}
-
-	encodedData := string(dataBytes)
 
 	for _, client := range clients {
 		client := client
@@ -423,7 +424,7 @@ func (api *realtimeApi) broadcastRecord(action string, record *models.Record) er
 
 			msg := subscriptions.Message{
 				Name: subscription,
-				Data: encodedData,
+				Data: dataBytes,
 			}
 
 			// ignore the auth record email visibility checks for
@@ -434,20 +435,45 @@ func (api *realtimeApi) broadcastRecord(action string, record *models.Record) er
 					api.canAccessRecord(client, data.Record, collection.AuthOptions().ManageRule) {
 					data.Record.IgnoreEmailVisibility(true) // ignore
 					if newData, err := json.Marshal(data); err == nil {
-						msg.Data = string(newData)
+						msg.Data = newData
 					}
 					data.Record.IgnoreEmailVisibility(false) // restore
 				}
 			}
 
-			routine.FireAndForget(func() {
-				if !client.IsDiscarded() {
-					client.Channel() <- msg
-				}
-			})
+			if dryCache {
+				client.Set(action+"/"+data.Record.Id, msg)
+			} else {
+				routine.FireAndForget(func() {
+					client.Send(msg)
+				})
+			}
 		}
 	}
 
+	return nil
+}
+
+// broadcastDryCachedRecord broadcasts record if it is cached in the client context.
+func (api *realtimeApi) broadcastDryCachedRecord(action string, record *models.Record) error {
+	clients := api.app.SubscriptionsBroker().Clients()
+
+	for _, client := range clients {
+		key := action + "/" + record.Id
+
+		msg, ok := client.Get(key).(subscriptions.Message)
+		if !ok {
+			continue
+		}
+
+		client.Unset(key)
+
+		client := client
+
+		routine.FireAndForget(func() {
+			client.Send(msg)
+		})
+	}
 	return nil
 }
 

@@ -3,19 +3,15 @@ package apis
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/labstack/echo/v5"
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
-	"github.com/pocketbase/pocketbase/resolvers"
 	"github.com/pocketbase/pocketbase/tokens"
 	"github.com/pocketbase/pocketbase/tools/list"
-	"github.com/pocketbase/pocketbase/tools/search"
 	"github.com/pocketbase/pocketbase/tools/security"
 	"github.com/spf13/cast"
 )
@@ -49,23 +45,21 @@ func (api *fileApi) fileToken(c echo.Context) error {
 		event.Token, _ = tokens.NewRecordFileToken(api.app, record)
 	}
 
-	handlerErr := api.app.OnFileBeforeTokenRequest().Trigger(event, func(e *core.FileTokenEvent) error {
+	return api.app.OnFileBeforeTokenRequest().Trigger(event, func(e *core.FileTokenEvent) error {
 		if e.Model == nil || e.Token == "" {
 			return NewBadRequestError("Failed to generate file token.", nil)
 		}
 
-		return e.HttpContext.JSON(http.StatusOK, map[string]string{
-			"token": e.Token,
+		return api.app.OnFileAfterTokenRequest().Trigger(event, func(e *core.FileTokenEvent) error {
+			if e.HttpContext.Response().Committed {
+				return nil
+			}
+
+			return e.HttpContext.JSON(http.StatusOK, map[string]string{
+				"token": e.Token,
+			})
 		})
 	})
-
-	if handlerErr == nil {
-		if err := api.app.OnFileAfterTokenRequest().Trigger(event); err != nil && api.app.IsDebug() {
-			log.Println(err)
-		}
-	}
-
-	return handlerErr
 }
 
 func (api *fileApi) download(c echo.Context) error {
@@ -102,7 +96,19 @@ func (api *fileApi) download(c echo.Context) error {
 
 		adminOrAuthRecord, _ := api.findAdminOrAuthRecordByFileToken(token)
 
-		if !api.canAccessRecord(adminOrAuthRecord, record, record.Collection().ViewRule) {
+		// create a copy of the cached request data and adjust it for the current auth model
+		requestInfo := *RequestInfo(c)
+		requestInfo.Admin = nil
+		requestInfo.AuthRecord = nil
+		if adminOrAuthRecord != nil {
+			if admin, _ := adminOrAuthRecord.(*models.Admin); admin != nil {
+				requestInfo.Admin = admin
+			} else if record, _ := adminOrAuthRecord.(*models.Record); record != nil {
+				requestInfo.AuthRecord = record
+			}
+		}
+
+		if ok, _ := api.app.Dao().CanAccessRecord(record, &requestInfo, record.Collection().ViewRule); !ok {
 			return NewForbiddenError("Insufficient permissions to access the file resource.", nil)
 		}
 	}
@@ -166,9 +172,11 @@ func (api *fileApi) download(c echo.Context) error {
 	c.Response().Header().Del("X-Frame-Options")
 
 	return api.app.OnFileDownloadRequest().Trigger(event, func(e *core.FileDownloadEvent) error {
-		res := e.HttpContext.Response()
-		req := e.HttpContext.Request()
-		if err := fs.Serve(res, req, e.ServedPath, e.ServedName); err != nil {
+		if e.HttpContext.Response().Committed {
+			return nil
+		}
+
+		if err := fs.Serve(e.HttpContext.Response(), e.HttpContext.Request(), e.ServedPath, e.ServedName); err != nil {
 			return NewNotFoundError("", err)
 		}
 
@@ -205,47 +213,4 @@ func (api *fileApi) findAdminOrAuthRecordByFileToken(fileToken string) (models.M
 	}
 
 	return nil, errors.New("missing or invalid file token")
-}
-
-// @todo move to a helper and maybe combine with the realtime checks when refactoring the realtime service
-func (api *fileApi) canAccessRecord(adminOrAuthRecord models.Model, record *models.Record, accessRule *string) bool {
-	admin, _ := adminOrAuthRecord.(*models.Admin)
-	if admin != nil {
-		// admins can access everything
-		return true
-	}
-
-	if accessRule == nil {
-		// only admins can access this record
-		return false
-	}
-
-	ruleFunc := func(q *dbx.SelectQuery) error {
-		if *accessRule == "" {
-			return nil // empty public rule
-		}
-
-		// mock request data
-		requestData := &models.RequestData{
-			Method: "GET",
-		}
-		requestData.AuthRecord, _ = adminOrAuthRecord.(*models.Record)
-
-		resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), record.Collection(), requestData, true)
-		expr, err := search.FilterData(*accessRule).BuildExpr(resolver)
-		if err != nil {
-			return err
-		}
-		resolver.UpdateQuery(q)
-		q.AndWhere(expr)
-
-		return nil
-	}
-
-	foundRecord, err := api.app.Dao().FindRecordById(record.Collection().Id, record.Id, ruleFunc)
-	if err == nil && foundRecord != nil {
-		return true
-	}
-
-	return false
 }

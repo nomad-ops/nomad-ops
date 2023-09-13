@@ -3,36 +3,36 @@ Package echo implements high performance, minimalist Go web framework.
 
 Example:
 
-  package main
+	  package main
 
-	import (
-		"github.com/labstack/echo/v5"
-		"github.com/labstack/echo/v5/middleware"
-		"log"
-		"net/http"
-	)
+		import (
+			"github.com/labstack/echo/v5"
+			"github.com/labstack/echo/v5/middleware"
+			"log"
+			"net/http"
+		)
 
-  // Handler
-  func hello(c echo.Context) error {
-    return c.String(http.StatusOK, "Hello, World!")
-  }
-
-  func main() {
-    // Echo instance
-    e := echo.New()
-
-    // Middleware
-    e.Use(middleware.Logger())
-    e.Use(middleware.Recover())
-
-    // Routes
-    e.GET("/", hello)
-
-    // Start server
-    if err := e.Start(":8080"); err != http.ErrServerClosed {
-		  log.Fatal(err)
+	  // Handler
+	  func hello(c echo.Context) error {
+	    return c.String(http.StatusOK, "Hello, World!")
 	  }
-  }
+
+	  func main() {
+	    // Echo instance
+	    e := echo.New()
+
+	    // Middleware
+	    e.Use(middleware.Logger())
+	    e.Use(middleware.Recover())
+
+	    // Routes
+	    e.GET("/", hello)
+
+	    // Start server
+	    if err := e.Start(":8080"); err != http.ErrServerClosed {
+			  log.Fatal(err)
+		  }
+	  }
 
 Learn more at https://echo.labstack.com
 */
@@ -40,6 +40,7 @@ package echo
 
 import (
 	stdContext "context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -54,7 +55,10 @@ import (
 )
 
 // Echo is the top-level framework instance.
-// Note: replacing/nilling public fields is not coroutine/thread-safe and can cause data-races/panics.
+//
+// Goroutine safety: Do not mutate Echo instance fields after server has started. Accessing these
+// fields from handlers/middlewares and changing field values at the same time leads to data-races.
+// Same rule applies to adding new routes after server has been started - Adding a route is not Goroutine safe action.
 type Echo struct {
 	// premiddleware are middlewares that are run for every request before routing is done
 	premiddleware []MiddlewareFunc
@@ -66,8 +70,8 @@ type Echo struct {
 	routerCreator func(e *Echo) Router
 
 	contextPool sync.Pool
-	// contextPathParamAllocSize holds maximum parameter count for all added routes. This is necessary info for context
-	// creation time so we can allocate path parameter values slice.
+	// contextPathParamAllocSize holds maximum parameter count for all added routes. This is necessary info at context
+	// creation moment so we can allocate path parameter values slice with correct size.
 	contextPathParamAllocSize int
 
 	// NewContextFunc allows using custom context implementations, instead of default *echo.context
@@ -88,6 +92,10 @@ type Echo struct {
 	// prefix for directory path. This is necessary as `//go:embed assets/images` embeds files with paths
 	// including `assets/images` as their prefix.
 	Filesystem fs.FS
+
+	// OnAddRoute is called when Echo adds new route to specific host router. Handler is called for every router
+	// and before route is added to the host router.
+	OnAddRoute func(host string, route Routable) error
 }
 
 // JSONSerializer is the interface that encodes and decodes JSON to and from interfaces.
@@ -150,6 +158,8 @@ const (
 	PROPFIND = "PROPFIND"
 	// REPORT Method can be used to get information about a resource, see rfc 3253
 	REPORT = "REPORT"
+	// RouteNotFound is special method type for routes handling "route not found" (404) cases
+	RouteNotFound = "echo_route_not_found"
 )
 
 // Headers
@@ -181,12 +191,14 @@ const (
 	HeaderXForwardedSsl       = "X-Forwarded-Ssl"
 	HeaderXUrlScheme          = "X-Url-Scheme"
 	HeaderXHTTPMethodOverride = "X-HTTP-Method-Override"
-	HeaderXRealIP             = "X-Real-IP"
-	HeaderXRequestID          = "X-Request-ID"
-	HeaderXCorrelationID      = "X-Correlation-ID"
+	HeaderXRealIP             = "X-Real-Ip"
+	HeaderXRequestID          = "X-Request-Id"
+	HeaderXCorrelationID      = "X-Correlation-Id"
 	HeaderXRequestedWith      = "X-Requested-With"
 	HeaderServer              = "Server"
 	HeaderOrigin              = "Origin"
+	HeaderCacheControl        = "Cache-Control"
+	HeaderConnection          = "Connection"
 
 	// Access control
 	HeaderAccessControlRequestMethod    = "Access-Control-Request-Method"
@@ -272,14 +284,22 @@ func (e *Echo) Router() Router {
 	return e.router
 }
 
-// Routers returns the map of host => router.
+// Routers returns the new map of host => router.
 func (e *Echo) Routers() map[string]Router {
-	return e.routers
+	result := make(map[string]Router)
+	for host, r := range e.routers {
+		result[host] = r
+	}
+	return result
 }
 
-// RouterFor returns Router for given host.
-func (e *Echo) RouterFor(host string) Router {
-	return e.routers[host]
+// RouterFor returns Router for given host. When host is left empty the default router is returned.
+func (e *Echo) RouterFor(host string) (Router, bool) {
+	if host == "" {
+		return e.router, true
+	}
+	router, ok := e.routers[host]
+	return router, ok
 }
 
 // ResetRouterCreator resets callback for creating new router instances.
@@ -317,12 +337,17 @@ func DefaultHTTPErrorHandler(exposeError bool) HTTPErrorHandler {
 		// Issue #1426
 		code := he.Code
 		message := he.Message
-		if m, ok := he.Message.(string); ok {
+		switch m := he.Message.(type) {
+		case string:
 			if exposeError {
 				message = Map{"message": m, "error": err.Error()}
 			} else {
 				message = Map{"message": m}
 			}
+		case json.Marshaler:
+			// do nothing - this type knows how to format itself to JSON
+		case error:
+			message = Map{"message": m.Error()}
 		}
 
 		// Send response
@@ -403,8 +428,21 @@ func (e *Echo) TRACE(path string, h HandlerFunc, m ...MiddlewareFunc) RouteInfo 
 	return e.Add(http.MethodTrace, path, h, m...)
 }
 
-// Any registers a new route for all supported HTTP methods and path with matching handler
-// in the router with optional route-level middleware. Panics on error.
+// RouteNotFound registers a special-case route which is executed when no other route is found (i.e. HTTP 404 cases)
+// for current request URL.
+// Path supports static and named/any parameters just like other http method is defined. Generally path is ended with
+// wildcard/match-any character (`/*`, `/download/*` etc).
+//
+// Example: `e.RouteNotFound("/*", func(c echo.Context) error { return c.NoContent(http.StatusNotFound) })`
+func (e *Echo) RouteNotFound(path string, h HandlerFunc, m ...MiddlewareFunc) RouteInfo {
+	return e.Add(RouteNotFound, path, h, m...)
+}
+
+// Any registers a new route for all HTTP methods (supported by Echo) and path with matching handler
+// in the router with optional route-level middleware.
+//
+// Note: this method only adds specific set of supported HTTP methods as handler and is not true
+// "catch-any-arbitrary-method" way of matching requests.
 func (e *Echo) Any(path string, handler HandlerFunc, middleware ...MiddlewareFunc) Routes {
 	errs := make([]error, 0)
 	ris := make(Routes, 0)
@@ -498,7 +536,7 @@ func StaticDirectoryHandler(fileSystem fs.FS, disablePathUnescaping bool) Handle
 		p = c.Request().URL.Path // path must not be empty.
 		if fi.IsDir() && len(p) > 0 && p[len(p)-1] != '/' {
 			// Redirect to ends with "/"
-			return c.Redirect(http.StatusMovedPermanently, p+"/")
+			return c.Redirect(http.StatusMovedPermanently, sanitizeURI(p+"/"))
 		}
 		return fsFile(c, name, fileSystem)
 	}
@@ -530,6 +568,12 @@ func (e *Echo) AddRoute(route Routable) (RouteInfo, error) {
 }
 
 func (e *Echo) add(host string, route Routable) (RouteInfo, error) {
+	if e.OnAddRoute != nil {
+		if err := e.OnAddRoute(host, route); err != nil {
+			return nil, err
+		}
+	}
+
 	router := e.findRouter(host)
 	ri, err := router.Add(route)
 	if err != nil {
@@ -608,7 +652,7 @@ func (e *Echo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c = e.contextPool.Get().(*DefaultContext)
 	}
 	c.Reset(r, w)
-	var h func(Context) error
+	var h HandlerFunc
 
 	if e.premiddleware == nil {
 		h = applyMiddleware(e.findRouter(r.Host).Route(c), e.middleware...)
@@ -637,12 +681,15 @@ func (e *Echo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // options.
 //
 // In need of customization use:
-// 	sc := echo.StartConfig{Address: ":8080"}
+//
+//	sc := echo.StartConfig{Address: ":8080"}
 //	if err := sc.Start(e); err != http.ErrServerClosed {
 //		log.Fatal(err)
 //	}
+//
 // // or standard library `http.Server`
-// 	s := http.Server{Addr: ":8080", Handler: e}
+//
+//	s := http.Server{Addr: ":8080", Handler: e}
 //	if err := s.ListenAndServe(); err != http.ErrServerClosed {
 //		log.Fatal(err)
 //	}
@@ -707,20 +754,26 @@ func newDefaultFS() *defaultFS {
 	dir, _ := os.Getwd()
 	return &defaultFS{
 		prefix: dir,
-		fs:     os.DirFS(dir),
+		fs:     nil,
 	}
 }
 
 func (fs defaultFS) Open(name string) (fs.File, error) {
+	if fs.fs == nil {
+		return os.Open(name)
+	}
 	return fs.fs.Open(name)
 }
 
 func subFS(currentFs fs.FS, root string) (fs.FS, error) {
 	root = filepath.ToSlash(filepath.Clean(root)) // note: fs.FS operates only with slashes. `ToSlash` is necessary for Windows
 	if dFS, ok := currentFs.(*defaultFS); ok {
-		// we need to make exception for `defaultFS` instances as it interprets root prefix differently from fs.FS to
-		// allow cases when root is given as `../somepath` which is not valid for fs.FS
-		root = filepath.Join(dFS.prefix, root)
+		// we need to make exception for `defaultFS` instances as it interprets root prefix differently from fs.FS.
+		// fs.Fs.Open does not like relative paths ("./", "../") and absolute paths at all but prior echo.Filesystem we
+		// were able to use paths like `./myfile.log`, `/etc/hosts` and these would work fine with `os.Open` but not with fs.Fs
+		if !filepath.IsAbs(root) {
+			root = filepath.Join(dFS.prefix, root)
+		}
 		return &defaultFS{
 			prefix: root,
 			fs:     os.DirFS(root),
@@ -741,4 +794,13 @@ func MustSubFS(currentFs fs.FS, fsRoot string) fs.FS {
 		panic(fmt.Errorf("can not create sub FS, invalid root given, err: %w", err))
 	}
 	return subFs
+}
+
+func sanitizeURI(uri string) string {
+	// double slash `\\`, `//` or even `\/` is absolute uri for browsers and by redirecting request to that uri
+	// we are vulnerable to open redirect attack. so replace all slashes from the beginning with single slash
+	if len(uri) > 1 && (uri[0] == '\\' || uri[0] == '/') && (uri[1] == '\\' || uri[1] == '/') {
+		uri = "/" + strings.TrimLeft(uri, `/\`)
+	}
+	return uri
 }

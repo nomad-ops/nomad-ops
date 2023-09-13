@@ -117,7 +117,7 @@ func (form *RecordUpsert) getContentType(r *http.Request) string {
 	return t
 }
 
-func (form *RecordUpsert) extractRequestData(
+func (form *RecordUpsert) extractRequestInfo(
 	r *http.Request,
 	keyPrefix string,
 ) (map[string]any, map[string][]*filesystem.File, error) {
@@ -219,12 +219,12 @@ func (form *RecordUpsert) extractMultipartFormData(
 //
 // File upload is supported only via multipart/form-data.
 func (form *RecordUpsert) LoadRequest(r *http.Request, keyPrefix string) error {
-	requestData, uploadedFiles, err := form.extractRequestData(r, keyPrefix)
+	requestInfo, uploadedFiles, err := form.extractRequestInfo(r, keyPrefix)
 	if err != nil {
 		return err
 	}
 
-	if err := form.LoadData(requestData); err != nil {
+	if err := form.LoadData(requestInfo); err != nil {
 		return err
 	}
 
@@ -349,39 +349,39 @@ func (form *RecordUpsert) RemoveFiles(key string, toDelete ...string) error {
 }
 
 // LoadData loads and normalizes the provided regular record data fields into the form.
-func (form *RecordUpsert) LoadData(requestData map[string]any) error {
+func (form *RecordUpsert) LoadData(requestInfo map[string]any) error {
 	// load base system fields
-	if v, ok := requestData[schema.FieldNameId]; ok {
+	if v, ok := requestInfo[schema.FieldNameId]; ok {
 		form.Id = cast.ToString(v)
 	}
 
 	// load auth system fields
 	if form.record.Collection().IsAuth() {
-		if v, ok := requestData[schema.FieldNameUsername]; ok {
+		if v, ok := requestInfo[schema.FieldNameUsername]; ok {
 			form.Username = cast.ToString(v)
 		}
-		if v, ok := requestData[schema.FieldNameEmail]; ok {
+		if v, ok := requestInfo[schema.FieldNameEmail]; ok {
 			form.Email = cast.ToString(v)
 		}
-		if v, ok := requestData[schema.FieldNameEmailVisibility]; ok {
+		if v, ok := requestInfo[schema.FieldNameEmailVisibility]; ok {
 			form.EmailVisibility = cast.ToBool(v)
 		}
-		if v, ok := requestData[schema.FieldNameVerified]; ok {
+		if v, ok := requestInfo[schema.FieldNameVerified]; ok {
 			form.Verified = cast.ToBool(v)
 		}
-		if v, ok := requestData["password"]; ok {
+		if v, ok := requestInfo["password"]; ok {
 			form.Password = cast.ToString(v)
 		}
-		if v, ok := requestData["passwordConfirm"]; ok {
+		if v, ok := requestInfo["passwordConfirm"]; ok {
 			form.PasswordConfirm = cast.ToString(v)
 		}
-		if v, ok := requestData["oldPassword"]; ok {
+		if v, ok := requestInfo["oldPassword"]; ok {
 			form.OldPassword = cast.ToString(v)
 		}
 	}
 
 	// replace modifiers (if any)
-	requestData = form.record.ReplaceModifers(requestData)
+	requestInfo = form.record.ReplaceModifers(requestInfo)
 
 	// create a shallow copy of form.data
 	var extendedData = make(map[string]any, len(form.data))
@@ -390,7 +390,7 @@ func (form *RecordUpsert) LoadData(requestData map[string]any) error {
 	}
 
 	// extend form.data with the request data
-	rawData, err := json.Marshal(requestData)
+	rawData, err := json.Marshal(requestInfo)
 	if err != nil {
 		return err
 	}
@@ -744,36 +744,44 @@ func (form *RecordUpsert) Submit(interceptors ...InterceptorFunc[*models.Record]
 
 		// upload new files (if any)
 		//
-		// note: executed after the default BeforeCreateFunc and BeforeUpdateFunc hooks
+		// note: executed after the default BeforeCreateFunc and BeforeUpdateFunc hook actions
 		// to allow uploading AFTER the before app model hooks (eg. in case of an id change)
 		// but BEFORE the actual record db persistence
 		// ---
-		dao.BeforeCreateFunc = func(eventDao *daos.Dao, m models.Model) error {
-			if form.dao.BeforeCreateFunc != nil {
-				if err := form.dao.BeforeCreateFunc(eventDao, m); err != nil {
-					return err
+		dao.BeforeCreateFunc = func(eventDao *daos.Dao, m models.Model, action func() error) error {
+			newAction := func() error {
+				if m.TableName() == form.record.TableName() && m.GetId() == form.record.GetId() {
+					if err := form.processFilesToUpload(); err != nil {
+						return err
+					}
 				}
+
+				return action()
 			}
 
-			if m.TableName() == form.record.TableName() && m.GetId() == form.record.GetId() {
-				return form.processFilesToUpload()
+			if form.dao.BeforeCreateFunc != nil {
+				return form.dao.BeforeCreateFunc(eventDao, m, newAction)
 			}
 
-			return nil
+			return newAction()
 		}
 
-		dao.BeforeUpdateFunc = func(eventDao *daos.Dao, m models.Model) error {
-			if form.dao.BeforeUpdateFunc != nil {
-				if err := form.dao.BeforeUpdateFunc(eventDao, m); err != nil {
-					return err
+		dao.BeforeUpdateFunc = func(eventDao *daos.Dao, m models.Model, action func() error) error {
+			newAction := func() error {
+				if m.TableName() == form.record.TableName() && m.GetId() == form.record.GetId() {
+					if err := form.processFilesToUpload(); err != nil {
+						return err
+					}
 				}
+
+				return action()
 			}
 
-			if m.TableName() == form.record.TableName() && m.GetId() == form.record.GetId() {
-				return form.processFilesToUpload()
+			if form.dao.BeforeUpdateFunc != nil {
+				return form.dao.BeforeUpdateFunc(eventDao, m, newAction)
 			}
 
-			return nil
+			return newAction()
 		}
 		// ---
 
@@ -896,7 +904,7 @@ func (form *RecordUpsert) prepareError(err error) error {
 		c := form.record.Collection()
 		for _, f := range c.Schema.Fields() {
 			// blank space to unify multi-columns lookup
-			if strings.Contains(msg+" ", fmt.Sprintf("%s.%s ", strings.ToLower(c.Name), f.Name)) {
+			if strings.Contains(msg+" ", strings.ToLower(c.Name+"."+f.Name)) {
 				validationErrs[f.Name] = validation.NewError("validation_not_unique", "Value must be unique")
 			}
 		}

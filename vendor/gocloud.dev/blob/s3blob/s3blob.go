@@ -32,8 +32,7 @@
 // full UTF-8 support, strings must be escaped (during writes) and unescaped
 // (during reads). The following escapes are performed for s3blob:
 //   - Blob keys: ASCII characters 0-31 are escaped to "__0x<hex>__".
-//     Additionally, the "/" in "../" and the trailing "/" in "//" are escaped in
-//     the same way.
+//     Additionally, the "/" in "../" is escaped in the same way.
 //   - Metadata keys: Escaped using URL encoding, then additionally "@:=" are
 //     escaped using "__0x<hex>__". These characters were determined by
 //     experimentation.
@@ -44,12 +43,12 @@
 // s3blob exposes the following types for As:
 //   - Bucket: (V1) *s3.S3; (V2) *s3v2.Client
 //   - Error: (V1) awserr.Error; (V2) any error type returned by the service, notably smithy.APIError
-//   - ListObject: (V1) s3.Object for objects, s3.CommonPrefix for "directories"; (V2) typesv2.Object for objects, typesv2.CommonPrefix for "directories
-//   - ListOptions.BeforeList: (V1) *s3.ListObjectsV2Input, or *s3.ListObjectsInput
-//     when Options.UseLegacyList == true; (V2) *s3v2.ListObjectsV2Input, or *s3v2.ListObjectsInput
+//   - ListObject: (V1) s3.Object for objects, s3.CommonPrefix for "directories"; (V2) typesv2.Object for objects, typesv2.CommonPrefix for "directories"
+//   - ListOptions.BeforeList: (V1) *s3.ListObjectsV2Input or *s3.ListObjectsInput
+//     when Options.UseLegacyList == true; (V2) *s3v2.ListObjectsV2Input or *[]func(*s3v2.Options), or *s3v2.ListObjectsInput
 //     when Options.UseLegacyList == true
 //   - Reader: (V1) s3.GetObjectOutput; (V2) s3v2.GetObjectInput
-//   - ReaderOptions.BeforeRead: (V1) *s3.GetObjectInput; (V2) *s3v2.GetObjectInput
+//   - ReaderOptions.BeforeRead: (V1) *s3.GetObjectInput; (V2) *s3v2.GetObjectInput or *[]func(*s3v2.Options)
 //   - Attributes: (V1) s3.HeadObjectOutput; (V2)s3v2.HeadObjectOutput
 //   - CopyOptions.BeforeCopy: *(V1) s3.CopyObjectInput; (V2) s3v2.CopyObjectInput
 //   - WriterOptions.BeforeWrite: (V1) *s3manager.UploadInput, *s3manager.Uploader; (V2) *s3v2.PutObjectInput, *s3v2manager.Uploader
@@ -264,7 +263,13 @@ func (r *reader) Attributes() *driver.ReaderAttributes {
 
 // writer writes an S3 object, it implements io.WriteCloser.
 type writer struct {
-	w *io.PipeWriter // created when the first byte is written
+	// Ends of an io.Pipe, created when the first byte is written.
+	pw *io.PipeWriter
+	pr *io.PipeReader
+
+	// Alternatively, upload is set to true when Upload was
+	// used to upload data.
+	upload bool
 
 	ctx   context.Context
 	useV2 bool
@@ -280,69 +285,74 @@ type writer struct {
 	err error
 }
 
-// Write appends p to w. User must call Close to close the w after done writing.
+// Write appends p to w.pw. User must call Close to close the w after done writing.
 func (w *writer) Write(p []byte) (int, error) {
 	// Avoid opening the pipe for a zero-length write;
 	// the concrete can do these for empty blobs.
 	if len(p) == 0 {
 		return 0, nil
 	}
-	if w.w == nil {
+	if w.pw == nil {
 		// We'll write into pw and use pr as an io.Reader for the
 		// Upload call to S3.
-		pr, pw := io.Pipe()
-		w.w = pw
-		if err := w.open(pr); err != nil {
-			return 0, err
-		}
+		w.pr, w.pw = io.Pipe()
+		w.open(w.pr, true)
 	}
-	select {
-	case <-w.donec:
-		return 0, w.err
-	default:
-	}
-	return w.w.Write(p)
+	return w.pw.Write(p)
 }
 
-// pr may be nil if we're Closing and no data was written.
-func (w *writer) open(pr *io.PipeReader) error {
+// Upload reads from r. Per the driver, it is guaranteed to be the only
+// write call for this writer.
+func (w *writer) Upload(r io.Reader) error {
+	w.upload = true
+	w.open(r, false)
+	return nil
+}
 
+// r may be nil if we're Closing and no data was written.
+// If closePipeOnError is true, w.pr will be closed if there's an
+// error uploading to S3.
+func (w *writer) open(r io.Reader, closePipeOnError bool) {
+	// This goroutine will keep running until Close, unless there's an error.
 	go func() {
 		defer close(w.donec)
 
-		body := io.Reader(pr)
-		if pr == nil {
+		if r == nil {
 			// AWS doesn't like a nil Body.
-			body = http.NoBody
+			r = http.NoBody
 		}
 		var err error
 		if w.useV2 {
-			w.reqV2.Body = body
+			w.reqV2.Body = r
 			_, err = w.uploaderV2.Upload(w.ctx, w.reqV2)
 		} else {
-			w.req.Body = body
+			w.req.Body = r
 			_, err = w.uploader.UploadWithContext(w.ctx, w.req)
 		}
 		if err != nil {
-			w.err = err
-			if pr != nil {
-				pr.CloseWithError(err)
+			if closePipeOnError {
+				w.pr.CloseWithError(err)
+				w.pr = nil
 			}
-			return
+			w.err = err
 		}
 	}()
-	return nil
 }
 
 // Close completes the writer and closes it. Any error occurring during write
 // will be returned. If a writer is closed before any Write is called, Close
 // will create an empty file at the given key.
 func (w *writer) Close() error {
-	if w.w == nil {
-		// We never got any bytes written. We'll write an http.NoBody.
-		w.open(nil)
-	} else if err := w.w.Close(); err != nil {
-		return err
+	if !w.upload {
+		if w.pr != nil {
+			defer w.pr.Close()
+		}
+		if w.pw == nil {
+			// We never got any bytes written. We'll write an http.NoBody.
+			w.open(nil, false)
+		} else if err := w.pw.Close(); err != nil {
+			return err
+		}
 	}
 	<-w.donec
 	return w.err
@@ -528,20 +538,24 @@ func (b *bucket) ListPaged(ctx context.Context, opts *driver.ListOptions) (*driv
 
 func (b *bucket) listObjectsV2(ctx context.Context, in *s3v2.ListObjectsV2Input, opts *driver.ListOptions) (*s3v2.ListObjectsV2Output, error) {
 	if !b.useLegacyList {
+		var varopt []func(*s3v2.Options)
 		if opts.BeforeList != nil {
 			asFunc := func(i interface{}) bool {
-				p, ok := i.(**s3v2.ListObjectsV2Input)
-				if !ok {
-					return false
+				if p, ok := i.(**s3v2.ListObjectsV2Input); ok {
+					*p = in
+					return true
 				}
-				*p = in
-				return true
+				if p, ok := i.(**[]func(*s3v2.Options)); ok {
+					*p = &varopt
+					return true
+				}
+				return false
 			}
 			if err := opts.BeforeList(asFunc); err != nil {
 				return nil, err
 			}
 		}
-		return b.clientV2.ListObjectsV2(ctx, in)
+		return b.clientV2.ListObjectsV2(ctx, in, varopt...)
 	}
 
 	// Use the legacy ListObjects request.
@@ -589,12 +603,11 @@ func (b *bucket) listObjects(ctx context.Context, in *s3.ListObjectsV2Input, opt
 	if !b.useLegacyList {
 		if opts.BeforeList != nil {
 			asFunc := func(i interface{}) bool {
-				p, ok := i.(**s3.ListObjectsV2Input)
-				if !ok {
-					return false
+				if p, ok := i.(**s3.ListObjectsV2Input); ok {
+					*p = in
+					return true
 				}
-				*p = in
-				return true
+				return false
 			}
 			if err := opts.BeforeList(asFunc); err != nil {
 				return nil, err
@@ -776,10 +789,15 @@ func (b *bucket) NewRangeReader(ctx context.Context, key string, offset, length 
 			Key:    aws.String(key),
 			Range:  byteRange,
 		}
+		var varopt []func(*s3v2.Options)
 		if opts.BeforeRead != nil {
 			asFunc := func(i interface{}) bool {
 				if p, ok := i.(**s3v2.GetObjectInput); ok {
 					*p = in
+					return true
+				}
+				if p, ok := i.(**[]func(*s3v2.Options)); ok {
+					*p = &varopt
 					return true
 				}
 				return false
@@ -788,7 +806,7 @@ func (b *bucket) NewRangeReader(ctx context.Context, key string, offset, length 
 				return nil, err
 			}
 		}
-		resp, err := b.clientV2.GetObject(ctx, in)
+		resp, err := b.clientV2.GetObject(ctx, in, varopt...)
 		if err != nil {
 			return nil, err
 		}
@@ -902,9 +920,6 @@ func escapeKey(key string) string {
 		// For "../", escape the trailing slash.
 		case i > 1 && c == '/' && r[i-1] == '.' && r[i-2] == '.':
 			return true
-		// For "//", escape the trailing slash. Otherwise, S3 drops it.
-		case i > 0 && c == '/' && r[i-1] == '/':
-			return true
 		}
 		return false
 	})
@@ -960,14 +975,22 @@ func (b *bucket) NewTypedWriter(ctx context.Context, key string, contentType str
 		}
 		if opts.BeforeWrite != nil {
 			asFunc := func(i interface{}) bool {
-				pu, ok := i.(**s3managerv2.Uploader)
-				if ok {
-					*pu = uploaderV2
+				// Note that since the Go CDK Blob
+				// abstraction does not expose AWS's
+				// Uploader concept, there does not
+				// appear to be any utility in
+				// exposing the options list to the v2
+				// Uploader's Upload() method.
+				// Instead, applications can
+				// manipulate the exposed *Uploader
+				// directly, including by setting
+				// ClientOptions if needed.
+				if p, ok := i.(**s3managerv2.Uploader); ok {
+					*p = uploaderV2
 					return true
 				}
-				pui, ok := i.(**s3v2.PutObjectInput)
-				if ok {
-					*pui = reqV2
+				if p, ok := i.(**s3v2.PutObjectInput); ok {
+					*p = reqV2
 					return true
 				}
 				return false

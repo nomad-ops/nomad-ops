@@ -11,38 +11,60 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/migrations"
 	"github.com/pocketbase/pocketbase/migrations/logs"
+	"github.com/pocketbase/pocketbase/tools/list"
 	"github.com/pocketbase/pocketbase/tools/migrate"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 )
 
-// ServeOptions defines an optional struct for apis.Serve().
-type ServeOptions struct {
+// ServeConfig defines a configuration struct for apis.Serve().
+type ServeConfig struct {
+	// ShowStartBanner indicates whether to show or hide the server start console message.
 	ShowStartBanner bool
-	HttpAddr        string
-	HttpsAddr       string
-	AllowedOrigins  []string // optional list of CORS origins (default to "*")
-	BeforeServeFunc func(server *http.Server) error
+
+	// HttpAddr is the TCP address to listen for the HTTP server (eg. `127.0.0.1:80`).
+	HttpAddr string
+
+	// HttpsAddr is the TCP address to listen for the HTTPS server (eg. `127.0.0.1:443`).
+	HttpsAddr string
+
+	// Optional domains list to use when issuing the TLS certificate.
+	//
+	// If not set, the host from the bound server address will be used.
+	//
+	// For convenience, for each "non-www" domain a "www" entry and
+	// redirect will be automatically added.
+	CertificateDomains []string
+
+	// AllowedOrigins is an optional list of CORS origins (default to "*").
+	AllowedOrigins []string
 }
 
 // Serve starts a new app web server.
-func Serve(app core.App, options *ServeOptions) error {
-	if options == nil {
-		options = &ServeOptions{}
-	}
-
-	if len(options.AllowedOrigins) == 0 {
-		options.AllowedOrigins = []string{"*"}
+//
+// NB! The app should be bootstrapped before starting the web server.
+//
+// Example:
+//
+// 	app.Bootstrap()
+// 	apis.Serve(app, apis.ServeConfig{
+// 		HttpAddr:        "127.0.0.1:8080",
+// 		ShowStartBanner: false,
+// 	})
+func Serve(app core.App, config ServeConfig) (*http.Server, error) {
+	if len(config.AllowedOrigins) == 0 {
+		config.AllowedOrigins = []string{"*"}
 	}
 
 	// ensure that the latest migrations are applied before starting the server
 	if err := runMigrations(app); err != nil {
-		return err
+		return nil, err
 	}
 
 	// reload app settings in case a new default value was set with a migration
@@ -56,33 +78,70 @@ func Serve(app core.App, options *ServeOptions) error {
 
 	router, err := InitApi(app)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// configure cors
 	router.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		Skipper:      middleware.DefaultSkipper,
-		AllowOrigins: options.AllowedOrigins,
+		AllowOrigins: config.AllowedOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
 	}))
 
 	// start http server
 	// ---
-	mainAddr := options.HttpAddr
-	if options.HttpsAddr != "" {
-		mainAddr = options.HttpsAddr
+	mainAddr := config.HttpAddr
+	if config.HttpsAddr != "" {
+		mainAddr = config.HttpsAddr
 	}
 
-	mainHost, _, _ := net.SplitHostPort(mainAddr)
+	var wwwRedirects []string
 
-	certManager := autocert.Manager{
+	// extract the host names for the certificate host policy
+	hostNames := config.CertificateDomains
+	if len(hostNames) == 0 {
+		host, _, _ := net.SplitHostPort(mainAddr)
+		hostNames = append(hostNames, host)
+	}
+	for _, host := range hostNames {
+		if strings.HasPrefix(host, "www.") {
+			continue // explicitly set www host
+		}
+
+		wwwHost := "www." + host
+		if !list.ExistInSlice(wwwHost, hostNames) {
+			hostNames = append(hostNames, wwwHost)
+			wwwRedirects = append(wwwRedirects, wwwHost)
+		}
+	}
+
+	// implicit www->non-www redirect(s)
+	if len(wwwRedirects) > 0 {
+		router.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				host := c.Request().Host
+
+				if strings.HasPrefix(host, "www.") && list.ExistInSlice(host, wwwRedirects) {
+					return c.Redirect(
+						http.StatusTemporaryRedirect,
+						(c.Scheme() + "://" + host[4:] + c.Request().RequestURI),
+					)
+				}
+
+				return next(c)
+			}
+		})
+	}
+
+	certManager := &autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
 		Cache:      autocert.DirCache(filepath.Join(app.DataDir(), ".autocert_cache")),
-		HostPolicy: autocert.HostWhitelist(mainHost, "www."+mainHost),
+		HostPolicy: autocert.HostWhitelist(hostNames...),
 	}
 
-	serverConfig := &http.Server{
+	server := &http.Server{
 		TLSConfig: &tls.Config{
+			MinVersion:     tls.VersionTLS12,
 			GetCertificate: certManager.GetCertificate,
 			NextProtos:     []string{acme.ALPNProto},
 		},
@@ -93,16 +152,26 @@ func Serve(app core.App, options *ServeOptions) error {
 		Addr:    mainAddr,
 	}
 
-	if options.BeforeServeFunc != nil {
-		if err := options.BeforeServeFunc(serverConfig); err != nil {
-			return err
-		}
+	serveEvent := &core.ServeEvent{
+		App:         app,
+		Router:      router,
+		Server:      server,
+		CertManager: certManager,
+	}
+	if err := app.OnBeforeServe().Trigger(serveEvent); err != nil {
+		return nil, err
 	}
 
-	if options.ShowStartBanner {
+	if config.ShowStartBanner {
 		schema := "http"
-		if options.HttpsAddr != "" {
+		addr := server.Addr
+
+		if config.HttpsAddr != "" {
 			schema = "https"
+
+			if len(config.CertificateDomains) > 0 {
+				addr = config.CertificateDomains[0]
+			}
 		}
 
 		date := new(strings.Builder)
@@ -112,34 +181,34 @@ func Serve(app core.App, options *ServeOptions) error {
 		bold.Printf(
 			"%s Server started at %s\n",
 			strings.TrimSpace(date.String()),
-			color.CyanString("%s://%s", schema, serverConfig.Addr),
+			color.CyanString("%s://%s", schema, addr),
 		)
 
 		regular := color.New()
-		regular.Printf(" ➜ REST API: %s\n", color.CyanString("%s://%s/api/", schema, serverConfig.Addr))
-		regular.Printf(" ➜ Admin UI: %s\n", color.CyanString("%s://%s/_/", schema, serverConfig.Addr))
+		regular.Printf("├─ REST API: %s\n", color.CyanString("%s://%s/api/", schema, addr))
+		regular.Printf("└─ Admin UI: %s\n", color.CyanString("%s://%s/_/", schema, addr))
 	}
 
 	// try to gracefully shutdown the server on app termination
 	app.OnTerminate().Add(func(e *core.TerminateEvent) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		serverConfig.Shutdown(ctx)
+		server.Shutdown(ctx)
 		return nil
 	})
 
 	// start HTTPS server
-	if options.HttpsAddr != "" {
+	if config.HttpsAddr != "" {
 		// if httpAddr is set, start an HTTP server to redirect the traffic to the HTTPS version
-		if options.HttpAddr != "" {
-			go http.ListenAndServe(options.HttpAddr, certManager.HTTPHandler(nil))
+		if config.HttpAddr != "" {
+			go http.ListenAndServe(config.HttpAddr, certManager.HTTPHandler(nil))
 		}
 
-		return serverConfig.ListenAndServeTLS("", "")
+		return server, server.ListenAndServeTLS("", "")
 	}
 
 	// OR start HTTP server
-	return serverConfig.ListenAndServe()
+	return server, server.ListenAndServe()
 }
 
 type migrationsConnection struct {

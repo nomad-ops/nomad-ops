@@ -10,6 +10,7 @@ import (
 	"reflect"
 )
 
+// BuildHookFunc defines a callback function that is executed on Query creation.
 type BuildHookFunc func(q *Query)
 
 // SelectQuery represents a DB-agnostic SELECT query.

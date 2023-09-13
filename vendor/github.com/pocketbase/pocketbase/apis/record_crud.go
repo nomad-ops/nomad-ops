@@ -50,9 +50,9 @@ func (api *recordApi) list(c echo.Context) error {
 		return err
 	}
 
-	requestData := RequestData(c)
+	requestInfo := RequestInfo(c)
 
-	if requestData.Admin == nil && collection.ListRule == nil {
+	if requestInfo.Admin == nil && collection.ListRule == nil {
 		// only admins can access if the rule is nil
 		return NewForbiddenError("Only admins can perform this action.", nil)
 	}
@@ -60,15 +60,15 @@ func (api *recordApi) list(c echo.Context) error {
 	fieldsResolver := resolvers.NewRecordFieldResolver(
 		api.app.Dao(),
 		collection,
-		requestData,
+		requestInfo,
 		// hidden fields are searchable only by admins
-		requestData.Admin != nil,
+		requestInfo.Admin != nil,
 	)
 
 	searchProvider := search.NewProvider(fieldsResolver).
 		Query(api.app.Dao().RecordQuery(collection))
 
-	if requestData.Admin == nil && collection.ListRule != nil {
+	if requestInfo.Admin == nil && collection.ListRule != nil {
 		searchProvider.AddFilter(search.FilterData(*collection.ListRule))
 	}
 
@@ -86,6 +86,10 @@ func (api *recordApi) list(c echo.Context) error {
 	event.Result = result
 
 	return api.app.OnRecordsListRequest().Trigger(event, func(e *core.RecordsListEvent) error {
+		if e.HttpContext.Response().Committed {
+			return nil
+		}
+
 		if err := EnrichRecords(e.HttpContext, api.app.Dao(), e.Records); err != nil && api.app.IsDebug() {
 			log.Println(err)
 		}
@@ -105,16 +109,16 @@ func (api *recordApi) view(c echo.Context) error {
 		return NewNotFoundError("", nil)
 	}
 
-	requestData := RequestData(c)
+	requestInfo := RequestInfo(c)
 
-	if requestData.Admin == nil && collection.ViewRule == nil {
+	if requestInfo.Admin == nil && collection.ViewRule == nil {
 		// only admins can access if the rule is nil
 		return NewForbiddenError("Only admins can perform this action.", nil)
 	}
 
 	ruleFunc := func(q *dbx.SelectQuery) error {
-		if requestData.Admin == nil && collection.ViewRule != nil && *collection.ViewRule != "" {
-			resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), collection, requestData, true)
+		if requestInfo.Admin == nil && collection.ViewRule != nil && *collection.ViewRule != "" {
+			resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), collection, requestInfo, true)
 			expr, err := search.FilterData(*collection.ViewRule).BuildExpr(resolver)
 			if err != nil {
 				return err
@@ -136,6 +140,10 @@ func (api *recordApi) view(c echo.Context) error {
 	event.Record = record
 
 	return api.app.OnRecordViewRequest().Trigger(event, func(e *core.RecordViewEvent) error {
+		if e.HttpContext.Response().Committed {
+			return nil
+		}
+
 		if err := EnrichRecord(e.HttpContext, api.app.Dao(), e.Record); err != nil && api.app.IsDebug() {
 			log.Println(err)
 		}
@@ -150,23 +158,23 @@ func (api *recordApi) create(c echo.Context) error {
 		return NewNotFoundError("", "Missing collection context.")
 	}
 
-	requestData := RequestData(c)
+	requestInfo := RequestInfo(c)
 
-	if requestData.Admin == nil && collection.CreateRule == nil {
+	if requestInfo.Admin == nil && collection.CreateRule == nil {
 		// only admins can access if the rule is nil
 		return NewForbiddenError("Only admins can perform this action.", nil)
 	}
 
-	hasFullManageAccess := requestData.Admin != nil
+	hasFullManageAccess := requestInfo.Admin != nil
 
 	// temporary save the record and check it against the create rule
-	if requestData.Admin == nil && collection.CreateRule != nil {
+	if requestInfo.Admin == nil && collection.CreateRule != nil {
 		testRecord := models.NewRecord(collection)
 
 		// replace modifiers fields so that the resolved value is always
-		// available when accessing requestData.Data using just the field name
-		if requestData.HasModifierDataKeys() {
-			requestData.Data = testRecord.ReplaceModifers(requestData.Data)
+		// available when accessing requestInfo.Data using just the field name
+		if requestInfo.HasModifierDataKeys() {
+			requestInfo.Data = testRecord.ReplaceModifers(requestInfo.Data)
 		}
 
 		testForm := forms.NewRecordUpsert(api.app, testRecord)
@@ -180,7 +188,7 @@ func (api *recordApi) create(c echo.Context) error {
 				return nil // no create rule to resolve
 			}
 
-			resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), collection, requestData, true)
+			resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), collection, requestInfo, true)
 			expr, err := search.FilterData(*collection.CreateRule).BuildExpr(resolver)
 			if err != nil {
 				return err
@@ -195,7 +203,7 @@ func (api *recordApi) create(c echo.Context) error {
 			if err != nil {
 				return fmt.Errorf("DrySubmit create rule failure: %w", err)
 			}
-			hasFullManageAccess = hasAuthManageAccess(txDao, foundRecord, requestData)
+			hasFullManageAccess = hasAuthManageAccess(txDao, foundRecord, requestInfo)
 			return nil
 		})
 
@@ -220,7 +228,7 @@ func (api *recordApi) create(c echo.Context) error {
 	event.UploadedFiles = form.FilesToUpload()
 
 	// create the record
-	submitErr := form.Submit(func(next forms.InterceptorNextFunc[*models.Record]) forms.InterceptorNextFunc[*models.Record] {
+	return form.Submit(func(next forms.InterceptorNextFunc[*models.Record]) forms.InterceptorNextFunc[*models.Record] {
 		return func(m *models.Record) error {
 			event.Record = m
 
@@ -233,18 +241,16 @@ func (api *recordApi) create(c echo.Context) error {
 					log.Println(err)
 				}
 
-				return e.HttpContext.JSON(http.StatusOK, e.Record)
+				return api.app.OnRecordAfterCreateRequest().Trigger(event, func(e *core.RecordCreateEvent) error {
+					if e.HttpContext.Response().Committed {
+						return nil
+					}
+
+					return e.HttpContext.JSON(http.StatusOK, e.Record)
+				})
 			})
 		}
 	})
-
-	if submitErr == nil {
-		if err := api.app.OnRecordAfterCreateRequest().Trigger(event); err != nil && api.app.IsDebug() {
-			log.Println(err)
-		}
-	}
-
-	return submitErr
 }
 
 func (api *recordApi) update(c echo.Context) error {
@@ -258,26 +264,26 @@ func (api *recordApi) update(c echo.Context) error {
 		return NewNotFoundError("", nil)
 	}
 
-	requestData := RequestData(c)
+	requestInfo := RequestInfo(c)
 
-	if requestData.Admin == nil && collection.UpdateRule == nil {
+	if requestInfo.Admin == nil && collection.UpdateRule == nil {
 		// only admins can access if the rule is nil
 		return NewForbiddenError("Only admins can perform this action.", nil)
 	}
 
 	// eager fetch the record so that the modifier field values are replaced
-	// and available when accessing requestData.Data using just the field name
-	if requestData.HasModifierDataKeys() {
+	// and available when accessing requestInfo.Data using just the field name
+	if requestInfo.HasModifierDataKeys() {
 		record, err := api.app.Dao().FindRecordById(collection.Id, recordId)
 		if err != nil || record == nil {
 			return NewNotFoundError("", err)
 		}
-		requestData.Data = record.ReplaceModifers(requestData.Data)
+		requestInfo.Data = record.ReplaceModifers(requestInfo.Data)
 	}
 
 	ruleFunc := func(q *dbx.SelectQuery) error {
-		if requestData.Admin == nil && collection.UpdateRule != nil && *collection.UpdateRule != "" {
-			resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), collection, requestData, true)
+		if requestInfo.Admin == nil && collection.UpdateRule != nil && *collection.UpdateRule != "" {
+			resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), collection, requestInfo, true)
 			expr, err := search.FilterData(*collection.UpdateRule).BuildExpr(resolver)
 			if err != nil {
 				return err
@@ -295,7 +301,7 @@ func (api *recordApi) update(c echo.Context) error {
 	}
 
 	form := forms.NewRecordUpsert(api.app, record)
-	form.SetFullManageAccess(requestData.Admin != nil || hasAuthManageAccess(api.app.Dao(), record, requestData))
+	form.SetFullManageAccess(requestInfo.Admin != nil || hasAuthManageAccess(api.app.Dao(), record, requestInfo))
 
 	// load request
 	if err := form.LoadRequest(c.Request(), ""); err != nil {
@@ -309,7 +315,7 @@ func (api *recordApi) update(c echo.Context) error {
 	event.UploadedFiles = form.FilesToUpload()
 
 	// update the record
-	submitErr := form.Submit(func(next forms.InterceptorNextFunc[*models.Record]) forms.InterceptorNextFunc[*models.Record] {
+	return form.Submit(func(next forms.InterceptorNextFunc[*models.Record]) forms.InterceptorNextFunc[*models.Record] {
 		return func(m *models.Record) error {
 			event.Record = m
 
@@ -322,18 +328,16 @@ func (api *recordApi) update(c echo.Context) error {
 					log.Println(err)
 				}
 
-				return e.HttpContext.JSON(http.StatusOK, e.Record)
+				return api.app.OnRecordAfterUpdateRequest().Trigger(event, func(e *core.RecordUpdateEvent) error {
+					if e.HttpContext.Response().Committed {
+						return nil
+					}
+
+					return e.HttpContext.JSON(http.StatusOK, e.Record)
+				})
 			})
 		}
 	})
-
-	if submitErr == nil {
-		if err := api.app.OnRecordAfterUpdateRequest().Trigger(event); err != nil && api.app.IsDebug() {
-			log.Println(err)
-		}
-	}
-
-	return submitErr
 }
 
 func (api *recordApi) delete(c echo.Context) error {
@@ -347,16 +351,16 @@ func (api *recordApi) delete(c echo.Context) error {
 		return NewNotFoundError("", nil)
 	}
 
-	requestData := RequestData(c)
+	requestInfo := RequestInfo(c)
 
-	if requestData.Admin == nil && collection.DeleteRule == nil {
+	if requestInfo.Admin == nil && collection.DeleteRule == nil {
 		// only admins can access if the rule is nil
 		return NewForbiddenError("Only admins can perform this action.", nil)
 	}
 
 	ruleFunc := func(q *dbx.SelectQuery) error {
-		if requestData.Admin == nil && collection.DeleteRule != nil && *collection.DeleteRule != "" {
-			resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), collection, requestData, true)
+		if requestInfo.Admin == nil && collection.DeleteRule != nil && *collection.DeleteRule != "" {
+			resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), collection, requestInfo, true)
 			expr, err := search.FilterData(*collection.DeleteRule).BuildExpr(resolver)
 			if err != nil {
 				return err
@@ -377,22 +381,20 @@ func (api *recordApi) delete(c echo.Context) error {
 	event.Collection = collection
 	event.Record = record
 
-	handlerErr := api.app.OnRecordBeforeDeleteRequest().Trigger(event, func(e *core.RecordDeleteEvent) error {
+	return api.app.OnRecordBeforeDeleteRequest().Trigger(event, func(e *core.RecordDeleteEvent) error {
 		// delete the record
 		if err := api.app.Dao().DeleteRecord(e.Record); err != nil {
 			return NewBadRequestError("Failed to delete record. Make sure that the record is not part of a required relation reference.", err)
 		}
 
-		return e.HttpContext.NoContent(http.StatusNoContent)
+		return api.app.OnRecordAfterDeleteRequest().Trigger(event, func(e *core.RecordDeleteEvent) error {
+			if e.HttpContext.Response().Committed {
+				return nil
+			}
+
+			return e.HttpContext.NoContent(http.StatusNoContent)
+		})
 	})
-
-	if handlerErr == nil {
-		if err := api.app.OnRecordAfterDeleteRequest().Trigger(event); err != nil && api.app.IsDebug() {
-			log.Println(err)
-		}
-	}
-
-	return handlerErr
 }
 
 func (api *recordApi) checkForForbiddenQueryFields(c echo.Context) error {

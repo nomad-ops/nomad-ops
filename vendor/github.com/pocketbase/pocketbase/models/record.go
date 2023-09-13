@@ -324,7 +324,7 @@ func (m *Record) Set(key string, value any) {
 	}
 }
 
-// Get returns a single record model data value for "key".
+// Get returns a normalized single record model data value for "key".
 func (m *Record) Get(key string) any {
 	switch key {
 	case schema.FieldNameId:
@@ -334,11 +334,27 @@ func (m *Record) Get(key string) any {
 	case schema.FieldNameUpdated:
 		return m.Updated
 	default:
-		if m.data == nil {
-			return nil
+		var v any
+		if m.data != nil {
+			v = m.data.Get(key)
 		}
 
-		return m.data.Get(key)
+		// normalize the field value in case it is missing or an incorrect type was set
+		// to ensure that the DB will always have normalized columns value.
+		if field := m.Collection().Schema.GetFieldByName(key); field != nil {
+			v = field.PrepareValue(v)
+		} else if m.collection.IsAuth() {
+			switch key {
+			case schema.FieldNameEmailVisibility, schema.FieldNameVerified:
+				v = cast.ToBool(v)
+			case schema.FieldNameLastResetSentAt, schema.FieldNameLastVerificationSentAt:
+				v, _ = types.ParseDateTime(v)
+			case schema.FieldNameUsername, schema.FieldNameEmail, schema.FieldNameTokenKey, schema.FieldNamePasswordHash:
+				v = cast.ToString(v)
+			}
+		}
+
+		return v
 	}
 }
 
@@ -376,6 +392,56 @@ func (m *Record) GetDateTime(key string) types.DateTime {
 // GetStringSlice returns the data value for "key" as a slice of unique strings.
 func (m *Record) GetStringSlice(key string) []string {
 	return list.ToUniqueStringSlice(m.Get(key))
+}
+
+// ExpandedOne retrieves a single relation Record from the already
+// loaded expand data of the current model.
+//
+// If the requested expand relation is multiple, this method returns
+// only first available Record from the expanded relation.
+//
+// Returns nil if there is no such expand relation loaded.
+func (m *Record) ExpandedOne(relField string) *Record {
+	if m.expand == nil {
+		return nil
+	}
+
+	rel := m.expand.Get(relField)
+
+	switch v := rel.(type) {
+	case *Record:
+		return v
+	case []*Record:
+		if len(v) > 0 {
+			return v[0]
+		}
+	}
+
+	return nil
+}
+
+// ExpandedAll retrieves a slice of relation Records from the already
+// loaded expand data of the current model.
+//
+// If the requested expand relation is single, this method normalizes
+// the return result and will wrap the single model as a slice.
+//
+// Returns nil slice if there is no such expand relation loaded.
+func (m *Record) ExpandedAll(relField string) []*Record {
+	if m.expand == nil {
+		return nil
+	}
+
+	rel := m.expand.Get(relField)
+
+	switch v := rel.(type) {
+	case *Record:
+		return []*Record{v}
+	case []*Record:
+		return v
+	}
+
+	return nil
 }
 
 // Retrieves the "key" json field value and unmarshals it into "result".
@@ -447,7 +513,8 @@ func (m *Record) ColumnValueMap() map[string]any {
 
 // PublicExport exports only the record fields that are safe to be public.
 //
-// Fields marked as hidden will be exported only if `m.IgnoreEmailVisibility(true)` is set.
+// For auth records, to force the export of the email field you need to set
+// `m.IgnoreEmailVisibility(true)`.
 func (m *Record) PublicExport() map[string]any {
 	result := make(map[string]any, len(m.collection.Schema.Fields())+5)
 

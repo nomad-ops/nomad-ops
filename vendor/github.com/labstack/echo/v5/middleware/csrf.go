@@ -63,6 +63,9 @@ type CSRFConfig struct {
 	// Indicates SameSite mode of the CSRF cookie.
 	// Optional. Default value SameSiteDefaultMode.
 	CookieSameSite http.SameSite
+
+	// ErrorHandler defines a function which is executed for returning custom errors.
+	ErrorHandler func(c echo.Context, err error) error
 }
 
 // ErrCSRFInvalid is returned when CSRF check fails
@@ -118,9 +121,9 @@ func (config CSRFConfig) ToMiddleware() (echo.MiddlewareFunc, error) {
 		config.CookieSecure = true
 	}
 
-	extractors, err := createExtractors(config.TokenLookup)
-	if err != nil {
-		return nil, err
+	extractors, cErr := createExtractors(config.TokenLookup)
+	if cErr != nil {
+		return nil, cErr
 	}
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -144,7 +147,7 @@ func (config CSRFConfig) ToMiddleware() (echo.MiddlewareFunc, error) {
 				var lastTokenErr error
 			outer:
 				for _, extractor := range extractors {
-					clientTokens, err := extractor(c)
+					clientTokens, _, err := extractor(c)
 					if err != nil {
 						lastExtractorErr = err
 						continue
@@ -159,10 +162,17 @@ func (config CSRFConfig) ToMiddleware() (echo.MiddlewareFunc, error) {
 						lastTokenErr = ErrCSRFInvalid
 					}
 				}
+				var finalErr error
 				if lastTokenErr != nil {
-					return lastTokenErr
+					finalErr = lastTokenErr
 				} else if lastExtractorErr != nil {
-					return echo.ErrBadRequest.WithInternal(lastExtractorErr)
+					finalErr = echo.ErrBadRequest.WithInternal(lastExtractorErr)
+				}
+				if finalErr != nil {
+					if config.ErrorHandler != nil {
+						return config.ErrorHandler(c, finalErr)
+					}
+					return finalErr
 				}
 			}
 

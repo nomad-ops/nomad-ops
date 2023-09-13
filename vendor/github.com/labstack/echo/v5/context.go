@@ -55,6 +55,16 @@ type Context interface {
 	// PathParam returns path parameter by name.
 	PathParam(name string) string
 
+	// PathParamDefault returns the path parameter or default value for the provided name.
+	//
+	// Notes for DefaultRouter implementation:
+	// Path parameter could be empty for cases like that:
+	// * route `/release-:version/bin` and request URL is `/release-/bin`
+	// * route `/api/:version/image.jpg` and request URL is `/api//image.jpg`
+	// but not when path parameter is last part of route path
+	// * route `/download/file.:ext` will not match request `/download/file.`
+	PathParamDefault(name string, defaultValue string) string
+
 	// PathParams returns path parameter values.
 	PathParams() PathParams
 
@@ -103,8 +113,8 @@ type Context interface {
 	// Set saves data in the context.
 	Set(key string, val interface{})
 
-	// Bind binds the request body into provided type `i`. The default binder
-	// does it based on Content-Type header.
+	// Bind binds path params, query params and the request body into provided type `i`. The default binder
+	// binds body based on Content-Type header.
 	Bind(i interface{}) error
 
 	// Validate validates provided `i`. It is usually called after `Context#Bind()`.
@@ -175,7 +185,18 @@ type Context interface {
 	// Redirect redirects the request to a provided URL with status code.
 	Redirect(code int, url string) error
 
+	// Error invokes the registered global HTTP error handler. Generally used by middleware.
+	// A side-effect of calling global error handler is that now Response has been committed (sent to the client) and
+	// middlewares up in chain can not change Response status code or Response body anymore.
+	//
+	// Avoid using this method in handlers as no middleware will be able to effectively handle errors after that.
+	// Instead of calling this method in handler return your error and let it be handled by middlewares or global error handler.
+	Error(err error)
+
 	// Echo returns the `Echo` instance.
+	//
+	// WARNING: Remember that Echo public fields and methods are coroutine safe ONLY when you are NOT mutating them
+	// anywhere in your code after Echo server has started.
 	Echo() *Echo
 }
 
@@ -324,11 +345,16 @@ func (c *DefaultContext) RealIP() string {
 	if ip := c.request.Header.Get(HeaderXForwardedFor); ip != "" {
 		i := strings.IndexAny(ip, ",")
 		if i > 0 {
-			return strings.TrimSpace(ip[:i])
+			xffip := strings.TrimSpace(ip[:i])
+			xffip = strings.TrimPrefix(xffip, "[")
+			xffip = strings.TrimSuffix(xffip, "]")
+			return xffip
 		}
 		return ip
 	}
 	if ip := c.request.Header.Get(HeaderXRealIP); ip != "" {
+		ip = strings.TrimPrefix(ip, "[")
+		ip = strings.TrimSuffix(ip, "]")
 		return ip
 	}
 	ra, _, _ := net.SplitHostPort(c.request.RemoteAddr)
@@ -379,7 +405,10 @@ func (c *DefaultContext) PathParam(name string) string {
 	return c.pathParams.Get(name, "")
 }
 
-// PathParamDefault does not exist as expecting empty path param makes no sense
+// PathParamDefault returns the path parameter or default value for the provided name.
+func (c *DefaultContext) PathParamDefault(name, defaultValue string) string {
+	return c.pathParams.Get(name, defaultValue)
+}
 
 // PathParams returns path parameter values.
 func (c *DefaultContext) PathParams() PathParams {
@@ -406,7 +435,8 @@ func (c *DefaultContext) QueryParam(name string) string {
 }
 
 // QueryParamDefault returns the query param or default value for the provided name.
-// Note: QueryParamDefault does not distinguish if form had no value by that name or value was empty string
+// Note: QueryParamDefault does not distinguish if query had no value by that name or value was empty string
+// This means URLs `/test?search=` and `/test` would both return `1` for `c.QueryParamDefault("search", "1")`
 func (c *DefaultContext) QueryParamDefault(name, defaultValue string) string {
 	value := c.QueryParam(name)
 	if value == "" {
@@ -506,8 +536,8 @@ func (c *DefaultContext) Set(key string, val interface{}) {
 	c.store[key] = val
 }
 
-// Bind binds the request body into provided type `i`. The default binder
-// does it based on Content-Type header.
+// Bind binds path params, query params and the request body into provided type `i`. The default binder
+// binds body based on Content-Type header.
 func (c *DefaultContext) Bind(i interface{}) error {
 	return c.echo.Binder.Bind(c, i)
 }
@@ -738,6 +768,16 @@ func (c *DefaultContext) Redirect(code int, url string) error {
 	c.response.Header().Set(HeaderLocation, url)
 	c.response.WriteHeader(code)
 	return nil
+}
+
+// Error invokes the registered global HTTP error handler. Generally used by middleware.
+// A side-effect of calling global error handler is that now Response has been committed (sent to the client) and
+// middlewares up in chain can not change Response status code or Response body anymore.
+//
+// Avoid using this method in handlers as no middleware will be able to effectively handle errors after that.
+// Instead of calling this method in handler return your error and let it be handled by middlewares or global error handler.
+func (c *DefaultContext) Error(err error) {
+	c.echo.HTTPErrorHandler(c, err)
 }
 
 // Echo returns the `Echo` instance.

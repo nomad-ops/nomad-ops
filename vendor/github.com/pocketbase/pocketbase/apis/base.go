@@ -2,6 +2,7 @@
 package apis
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -34,6 +35,7 @@ func InitApi(app core.App) (*echo.Echo, error) {
 	e.ResetRouterCreator(func(ec *echo.Echo) echo.Router {
 		return echo.NewRouter(echo.RouterConfig{
 			UnescapePathParamValues: true,
+			AllowOverwritingRoute:   true,
 		})
 	})
 
@@ -44,12 +46,16 @@ func InitApi(app core.App) (*echo.Echo, error) {
 			return !strings.HasPrefix(c.Request().URL.Path, "/api/")
 		},
 	}))
+	e.Pre(LoadAuthContext(app))
 	e.Use(middleware.Recover())
 	e.Use(middleware.Secure())
-	e.Use(LoadAuthContext(app))
 
 	// custom error handler
 	e.HTTPErrorHandler = func(c echo.Context, err error) {
+		if err == nil {
+			return // no error
+		}
+
 		if c.Response().Committed {
 			if app.IsDebug() {
 				log.Println("HTTPErrorHandler response was already committed:", err)
@@ -59,23 +65,26 @@ func InitApi(app core.App) (*echo.Echo, error) {
 
 		var apiErr *ApiError
 
-		switch v := err.(type) {
-		case *echo.HTTPError:
+		if errors.As(err, &apiErr) {
+			if app.IsDebug() && apiErr.RawData() != nil {
+				log.Println(apiErr.RawData())
+			}
+		} else if v := new(echo.HTTPError); errors.As(err, &v) {
 			if v.Internal != nil && app.IsDebug() {
 				log.Println(v.Internal)
 			}
 			msg := fmt.Sprintf("%v", v.Message)
 			apiErr = NewApiError(v.Code, msg, v)
-		case *ApiError:
-			if app.IsDebug() && v.RawData() != nil {
-				log.Println(v.RawData())
-			}
-			apiErr = v
-		default:
-			if err != nil && app.IsDebug() {
+		} else {
+			if app.IsDebug() {
 				log.Println(err)
 			}
-			apiErr = NewBadRequestError("", err)
+
+			if errors.Is(err, sql.ErrNoRows) {
+				apiErr = NewNotFoundError("", err)
+			} else {
+				apiErr = NewBadRequestError("", err)
+			}
 		}
 
 		event := new(core.ApiErrorEvent)
@@ -84,6 +93,10 @@ func InitApi(app core.App) (*echo.Echo, error) {
 
 		// send error response
 		hookErr := app.OnBeforeApiError().Trigger(event, func(e *core.ApiErrorEvent) error {
+			if c.Response().Committed {
+				return nil
+			}
+
 			// @see https://github.com/labstack/echo/issues/608
 			if e.HttpContext.Request().Method == http.MethodHead {
 				return e.HttpContext.NoContent(apiErr.Code)
@@ -92,19 +105,21 @@ func InitApi(app core.App) (*echo.Echo, error) {
 			return e.HttpContext.JSON(apiErr.Code, apiErr)
 		})
 
-		// truly rare case; eg. client already disconnected
-		if hookErr != nil && app.IsDebug() {
+		if hookErr == nil {
+			if err := app.OnAfterApiError().Trigger(event); err != nil && app.IsDebug() {
+				log.Println(hookErr)
+			}
+		} else if app.IsDebug() {
+			// truly rare case; eg. client already disconnected
 			log.Println(hookErr)
 		}
-
-		app.OnAfterApiError().Trigger(event)
 	}
 
 	// admin ui routes
 	bindStaticAdminUI(app, e)
 
 	// default routes
-	api := e.Group("/api")
+	api := e.Group("/api", eagerRequestInfoCache(app))
 	bindSettingsApi(app, api)
 	bindAdminApi(app, api)
 	bindCollectionApi(app, api)
@@ -115,20 +130,6 @@ func InitApi(app core.App) (*echo.Echo, error) {
 	bindLogsApi(app, api)
 	bindHealthApi(app, api)
 	bindBackupApi(app, api)
-
-	// trigger the custom BeforeServe hook for the created api router
-	// allowing users to further adjust its options or register new routes
-	serveEvent := &core.ServeEvent{
-		App:    app,
-		Router: e,
-	}
-	if err := app.OnBeforeServe().Trigger(serveEvent); err != nil {
-		return nil, err
-	}
-
-	// note: it is after the OnBeforeServe hook to ensure that the implicit
-	// cache is after any user custom defined middlewares
-	e.Use(eagerRequestDataCache(app))
 
 	// catch all any route
 	api.Any("/*", func(c echo.Context) error {
@@ -192,19 +193,6 @@ func bindStaticAdminUI(app core.App, e *echo.Echo) error {
 	return nil
 }
 
-const totalAdminsCacheKey = "@totalAdmins"
-
-func updateTotalAdminsCache(app core.App) error {
-	total, err := app.Dao().TotalAdmins()
-	if err != nil {
-		return err
-	}
-
-	app.Cache().Set(totalAdminsCacheKey, total)
-
-	return nil
-}
-
 func uiCacheControl() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -219,15 +207,29 @@ func uiCacheControl() echo.MiddlewareFunc {
 	}
 }
 
+const hasAdminsCacheKey = "@hasAdmins"
+
+func updateHasAdminsCache(app core.App) error {
+	total, err := app.Dao().TotalAdmins()
+	if err != nil {
+		return err
+	}
+
+	app.Cache().Set(hasAdminsCacheKey, total > 0)
+
+	return nil
+}
+
 // installerRedirect redirects the user to the installer admin UI page
 // when the application needs some preliminary configurations to be done.
 func installerRedirect(app core.App) echo.MiddlewareFunc {
-	// keep totalAdminsCacheKey value up-to-date
+	// keep hasAdminsCacheKey value up-to-date
 	app.OnAdminAfterCreateRequest().Add(func(data *core.AdminCreateEvent) error {
-		return updateTotalAdminsCache(app)
+		return updateHasAdminsCache(app)
 	})
+
 	app.OnAdminAfterDeleteRequest().Add(func(data *core.AdminDeleteEvent) error {
-		return updateTotalAdminsCache(app)
+		return updateHasAdminsCache(app)
 	})
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -238,23 +240,24 @@ func installerRedirect(app core.App) echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			// load into cache (if not already)
-			if !app.Cache().Has(totalAdminsCacheKey) {
-				if err := updateTotalAdminsCache(app); err != nil {
+			hasAdmins := cast.ToBool(app.Cache().Get(hasAdminsCacheKey))
+
+			if !hasAdmins {
+				// update the cache to make sure that the admin wasn't created by another process
+				if err := updateHasAdminsCache(app); err != nil {
 					return err
 				}
+				hasAdmins = cast.ToBool(app.Cache().Get(hasAdminsCacheKey))
 			}
-
-			totalAdmins := cast.ToInt(app.Cache().Get(totalAdminsCacheKey))
 
 			_, hasInstallerParam := c.Request().URL.Query()["installer"]
 
-			if totalAdmins == 0 && !hasInstallerParam {
+			if !hasAdmins && !hasInstallerParam {
 				// redirect to the installer page
 				return c.Redirect(http.StatusTemporaryRedirect, "?installer#")
 			}
 
-			if totalAdmins != 0 && hasInstallerParam {
+			if hasAdmins && hasInstallerParam {
 				// clear the installer param
 				return c.Redirect(http.StatusTemporaryRedirect, "?")
 			}

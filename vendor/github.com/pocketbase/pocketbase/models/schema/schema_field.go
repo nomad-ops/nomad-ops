@@ -132,6 +132,10 @@ type SchemaField struct {
 	Type     string `form:"type" json:"type"`
 	Required bool   `form:"required" json:"required"`
 
+	// Presentable indicates whether the field is suitable for
+	// visualization purposes (eg. in the Admin UI relation views).
+	Presentable bool `form:"presentable" json:"presentable"`
+
 	// Deprecated: This field is no-op and will be removed in future versions.
 	// Please use the collection.Indexes field to define a unique constraint.
 	Unique bool `form:"unique" json:"unique"`
@@ -143,13 +147,17 @@ type SchemaField struct {
 func (f *SchemaField) ColDefinition() string {
 	switch f.Type {
 	case FieldTypeNumber:
-		return "NUMERIC DEFAULT 0"
+		return "NUMERIC DEFAULT 0 NOT NULL"
 	case FieldTypeBool:
-		return "BOOLEAN DEFAULT FALSE"
+		return "BOOLEAN DEFAULT FALSE NOT NULL"
 	case FieldTypeJson:
 		return "JSON DEFAULT NULL"
 	default:
-		return "TEXT DEFAULT ''"
+		if opt, ok := f.Options.(MultiValuer); ok && opt.IsMultiple() {
+			return "JSON DEFAULT '[]' NOT NULL"
+		}
+
+		return "TEXT DEFAULT '' NOT NULL"
 	}
 }
 
@@ -190,7 +198,7 @@ func (f SchemaField) Validate() error {
 
 	excludeNames := BaseModelFieldNames()
 	// exclude special filter literals
-	excludeNames = append(excludeNames, "null", "true", "false")
+	excludeNames = append(excludeNames, "null", "true", "false", "_rowid_")
 	// exclude system literals
 	excludeNames = append(excludeNames, SystemFieldNames()...)
 
@@ -448,19 +456,34 @@ func (o *TextOptions) checkRegex(value any) error {
 // -------------------------------------------------------------------
 
 type NumberOptions struct {
-	Min *float64 `form:"min" json:"min"`
-	Max *float64 `form:"max" json:"max"`
+	Min       *float64 `form:"min" json:"min"`
+	Max       *float64 `form:"max" json:"max"`
+	NoDecimal bool     `form:"noDecimal" json:"noDecimal"`
 }
 
 func (o NumberOptions) Validate() error {
 	var maxRules []validation.Rule
 	if o.Min != nil && o.Max != nil {
-		maxRules = append(maxRules, validation.Min(*o.Min))
+		maxRules = append(maxRules, validation.Min(*o.Min), validation.By(o.checkNoDecimal))
 	}
 
 	return validation.ValidateStruct(&o,
+		validation.Field(&o.Min, validation.By(o.checkNoDecimal)),
 		validation.Field(&o.Max, maxRules...),
 	)
+}
+
+func (o *NumberOptions) checkNoDecimal(value any) error {
+	v, _ := value.(*float64)
+	if v == nil || !o.NoDecimal {
+		return nil // nothing to check
+	}
+
+	if *v != float64(int64(*v)) {
+		return validation.NewError("validation_no_decimal_constraint", "Decimal numbers are not allowed.")
+	}
+
+	return nil
 }
 
 // -------------------------------------------------------------------
@@ -515,6 +538,12 @@ func (o UrlOptions) Validate() error {
 // -------------------------------------------------------------------
 
 type EditorOptions struct {
+	// ConvertUrls is usually used to instruct the editor whether to
+	// apply url conversion (eg. stripping the domain name in case the
+	// urls are using the same domain as the one where the editor is loaded).
+	//
+	// (see also https://www.tiny.cloud/docs/tinymce/6/url-handling/#convert_urls)
+	ConvertUrls bool `form:"convertUrls" json:"convertUrls"`
 }
 
 func (o EditorOptions) Validate() error {
@@ -641,7 +670,8 @@ type RelationOptions struct {
 	// If nil no limits are applied.
 	MaxSelect *int `form:"maxSelect" json:"maxSelect"`
 
-	// DisplayFields is optional slice of collection field names used for UI purposes.
+	// Deprecated: This field is no-op and will be removed in future versions.
+	// Instead use the individula SchemaField.Presentable option for each field in the relation collection.
 	DisplayFields []string `form:"displayFields" json:"displayFields"`
 }
 
@@ -653,7 +683,7 @@ func (o RelationOptions) Validate() error {
 
 	return validation.ValidateStruct(&o,
 		validation.Field(&o.CollectionId, validation.Required),
-		validation.Field(&o.MinSelect, validation.NilOrNotEmpty, validation.Min(1)),
+		validation.Field(&o.MinSelect, validation.Min(0)),
 		validation.Field(&o.MaxSelect, validation.NilOrNotEmpty, validation.Min(minVal)),
 	)
 }

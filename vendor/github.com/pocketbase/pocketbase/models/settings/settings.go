@@ -60,6 +60,9 @@ type Settings struct {
 	OIDC2Auth     AuthProviderConfig `form:"oidc2Auth" json:"oidc2Auth"`
 	OIDC3Auth     AuthProviderConfig `form:"oidc3Auth" json:"oidc3Auth"`
 	AppleAuth     AuthProviderConfig `form:"appleAuth" json:"appleAuth"`
+	InstagramAuth AuthProviderConfig `form:"instagramAuth" json:"instagramAuth"`
+	VKAuth        AuthProviderConfig `form:"vkAuth" json:"vkAuth"`
+	YandexAuth    AuthProviderConfig `form:"yandexAuth" json:"yandexAuth"`
 }
 
 // New creates and returns a new default Settings instance.
@@ -175,6 +178,15 @@ func New() *Settings {
 		AppleAuth: AuthProviderConfig{
 			Enabled: false,
 		},
+		InstagramAuth: AuthProviderConfig{
+			Enabled: false,
+		},
+		VKAuth: AuthProviderConfig{
+			Enabled: false,
+		},
+		YandexAuth: AuthProviderConfig{
+			Enabled: false,
+		},
 	}
 }
 
@@ -215,6 +227,9 @@ func (s *Settings) Validate() error {
 		validation.Field(&s.OIDC2Auth),
 		validation.Field(&s.OIDC3Auth),
 		validation.Field(&s.AppleAuth),
+		validation.Field(&s.InstagramAuth),
+		validation.Field(&s.VKAuth),
+		validation.Field(&s.YandexAuth),
 	)
 }
 
@@ -278,6 +293,9 @@ func (s *Settings) RedactClone() (*Settings, error) {
 		&clone.OIDC2Auth.ClientSecret,
 		&clone.OIDC3Auth.ClientSecret,
 		&clone.AppleAuth.ClientSecret,
+		&clone.InstagramAuth.ClientSecret,
+		&clone.VKAuth.ClientSecret,
+		&clone.YandexAuth.ClientSecret,
 	}
 
 	// mask all sensitive fields
@@ -315,6 +333,9 @@ func (s *Settings) NamedAuthProviderConfigs() map[string]AuthProviderConfig {
 		auth.NameOIDC + "2": s.OIDC2Auth,
 		auth.NameOIDC + "3": s.OIDC3Auth,
 		auth.NameApple:      s.AppleAuth,
+		auth.NameInstagram:  s.InstagramAuth,
+		auth.NameVK:         s.VKAuth,
+		auth.NameYandex:     s.YandexAuth,
 	}
 }
 
@@ -350,6 +371,12 @@ type SmtpConfig struct {
 	// When set to false StartTLS command is send, leaving the server
 	// to decide whether to upgrade the connection or not.
 	Tls bool `form:"tls" json:"tls"`
+
+	// LocalName is optional domain name or IP address used for the
+	// EHLO/HELO exchange (if not explicitly set, defaults to "localhost").
+	//
+	// This is required only by some SMTP servers, such as Gmail SMTP-relay.
+	LocalName string `form:"localName" json:"localName"`
 }
 
 // Validate makes SmtpConfig validatable by implementing [validation.Validatable] interface.
@@ -372,6 +399,7 @@ func (c SmtpConfig) Validate() error {
 			// validation.When(c.Enabled, validation.Required),
 			validation.In(mailer.SmtpAuthLogin, mailer.SmtpAuthPlain),
 		),
+		validation.Field(&c.LocalName, is.Host),
 	)
 }
 

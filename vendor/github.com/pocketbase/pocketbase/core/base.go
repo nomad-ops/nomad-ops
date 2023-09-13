@@ -180,7 +180,7 @@ type BaseAppConfig struct {
 // configured with the provided arguments.
 //
 // To initialize the app, you need to call `app.Bootstrap()`.
-func NewBaseApp(config *BaseAppConfig) *BaseApp {
+func NewBaseApp(config BaseAppConfig) *BaseApp {
 	app := &BaseApp{
 		dataDir:             config.DataDir,
 		isDebug:             config.IsDebug,
@@ -349,11 +349,7 @@ func (app *BaseApp) Bootstrap() error {
 	// cleanup the pb_data temp directory (if any)
 	os.RemoveAll(filepath.Join(app.DataDir(), LocalTempDirName))
 
-	if err := app.OnAfterBootstrap().Trigger(event); err != nil && app.IsDebug() {
-		log.Println(err)
-	}
-
-	return nil
+	return app.OnAfterBootstrap().Trigger(event)
 }
 
 // ResetBootstrapState takes care for releasing initialized app resources
@@ -379,7 +375,6 @@ func (app *BaseApp) ResetBootstrapState() error {
 
 	app.dao = nil
 	app.logsDao = nil
-	app.settings = nil
 
 	return nil
 }
@@ -475,6 +470,7 @@ func (app *BaseApp) NewMailClient() mailer.Mailer {
 			Password:   app.Settings().Smtp.Password,
 			Tls:        app.Settings().Smtp.Tls,
 			AuthMethod: app.Settings().Smtp.AuthMethod,
+			LocalName:  app.Settings().Smtp.LocalName,
 		}
 	}
 
@@ -485,7 +481,7 @@ func (app *BaseApp) NewMailClient() mailer.Mailer {
 // for managing regular app files (eg. collection uploads)
 // based on the current app settings.
 //
-// NB! Make sure to call `Close()` on the returned result
+// NB! Make sure to call Close() on the returned result
 // after you are done working with it.
 func (app *BaseApp) NewFilesystem() (*filesystem.System, error) {
 	if app.settings != nil && app.settings.S3.Enabled {
@@ -506,7 +502,7 @@ func (app *BaseApp) NewFilesystem() (*filesystem.System, error) {
 // NewFilesystem creates a new local or S3 filesystem instance
 // for managing app backups based on the current app settings.
 //
-// NB! Make sure to call `Close()` on the returned result
+// NB! Make sure to call Close() on the returned result
 // after you are done working with it.
 func (app *BaseApp) NewBackupsFilesystem() (*filesystem.System, error) {
 	if app.settings != nil && app.settings.Backups.S3.Enabled {
@@ -1053,58 +1049,58 @@ func (app *BaseApp) initDataDB() error {
 func (app *BaseApp) createDaoWithHooks(concurrentDB, nonconcurrentDB dbx.Builder) *daos.Dao {
 	dao := daos.NewMultiDB(concurrentDB, nonconcurrentDB)
 
-	dao.BeforeCreateFunc = func(eventDao *daos.Dao, m models.Model) error {
+	dao.BeforeCreateFunc = func(eventDao *daos.Dao, m models.Model, action func() error) error {
 		e := new(ModelEvent)
 		e.Dao = eventDao
 		e.Model = m
 
-		return app.OnModelBeforeCreate().Trigger(e)
+		return app.OnModelBeforeCreate().Trigger(e, func(e *ModelEvent) error {
+			return action()
+		})
 	}
 
-	dao.AfterCreateFunc = func(eventDao *daos.Dao, m models.Model) {
+	dao.AfterCreateFunc = func(eventDao *daos.Dao, m models.Model) error {
 		e := new(ModelEvent)
 		e.Dao = eventDao
 		e.Model = m
 
-		if err := app.OnModelAfterCreate().Trigger(e); err != nil && app.isDebug {
-			log.Println(err)
-		}
+		return app.OnModelAfterCreate().Trigger(e)
 	}
 
-	dao.BeforeUpdateFunc = func(eventDao *daos.Dao, m models.Model) error {
+	dao.BeforeUpdateFunc = func(eventDao *daos.Dao, m models.Model, action func() error) error {
 		e := new(ModelEvent)
 		e.Dao = eventDao
 		e.Model = m
 
-		return app.OnModelBeforeUpdate().Trigger(e)
+		return app.OnModelBeforeUpdate().Trigger(e, func(e *ModelEvent) error {
+			return action()
+		})
 	}
 
-	dao.AfterUpdateFunc = func(eventDao *daos.Dao, m models.Model) {
+	dao.AfterUpdateFunc = func(eventDao *daos.Dao, m models.Model) error {
 		e := new(ModelEvent)
 		e.Dao = eventDao
 		e.Model = m
 
-		if err := app.OnModelAfterUpdate().Trigger(e); err != nil && app.isDebug {
-			log.Println(err)
-		}
+		return app.OnModelAfterUpdate().Trigger(e)
 	}
 
-	dao.BeforeDeleteFunc = func(eventDao *daos.Dao, m models.Model) error {
+	dao.BeforeDeleteFunc = func(eventDao *daos.Dao, m models.Model, action func() error) error {
 		e := new(ModelEvent)
 		e.Dao = eventDao
 		e.Model = m
 
-		return app.OnModelBeforeDelete().Trigger(e)
+		return app.OnModelBeforeDelete().Trigger(e, func(e *ModelEvent) error {
+			return action()
+		})
 	}
 
-	dao.AfterDeleteFunc = func(eventDao *daos.Dao, m models.Model) {
+	dao.AfterDeleteFunc = func(eventDao *daos.Dao, m models.Model) error {
 		e := new(ModelEvent)
 		e.Dao = eventDao
 		e.Model = m
 
-		if err := app.OnModelAfterDelete().Trigger(e); err != nil && app.isDebug {
-			log.Println(err)
-		}
+		return app.OnModelAfterDelete().Trigger(e)
 	}
 
 	return dao

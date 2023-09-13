@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"time"
 
@@ -12,6 +11,8 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/forms"
 	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/tools/filesystem"
+	"github.com/pocketbase/pocketbase/tools/rest"
 	"github.com/pocketbase/pocketbase/tools/types"
 	"github.com/spf13/cast"
 )
@@ -25,6 +26,7 @@ func bindBackupApi(app core.App, rg *echo.Group) {
 	subGroup := rg.Group("/backups", ActivityLogger(app))
 	subGroup.GET("", api.list, RequireAdminAuth())
 	subGroup.POST("", api.create, RequireAdminAuth())
+	subGroup.POST("/upload", api.upload, RequireAdminAuth())
 	subGroup.GET("/:key", api.download)
 	subGroup.DELETE("/:key", api.delete, RequireAdminAuth())
 	subGroup.POST("/:key/restore", api.restore, RequireAdminAuth())
@@ -89,6 +91,28 @@ func (api *backupApi) create(c echo.Context) error {
 	})
 }
 
+func (api *backupApi) upload(c echo.Context) error {
+	files, err := rest.FindUploadedFiles(c.Request(), "file")
+	if err != nil {
+		return NewBadRequestError("Missing or invalid uploaded file.", err)
+	}
+
+	form := forms.NewBackupUpload(api.app)
+	form.File = files[0]
+
+	return form.Submit(func(next forms.InterceptorNextFunc[*filesystem.File]) forms.InterceptorNextFunc[*filesystem.File] {
+		return func(file *filesystem.File) error {
+			if err := next(file); err != nil {
+				return NewBadRequestError("Failed to upload backup.", err)
+			}
+
+			// we don't retrieve the generated backup file because it may not be
+			// available yet due to the eventually consistent nature of some S3 providers
+			return c.NoContent(http.StatusNoContent)
+		}
+	})
+}
+
 func (api *backupApi) download(c echo.Context) error {
 	fileToken := c.QueryParam("token")
 
@@ -132,8 +156,7 @@ func (api *backupApi) restore(c echo.Context) error {
 		return NewBadRequestError("Try again later - another backup/restore process has already been started.", nil)
 	}
 
-	// @todo remove the extra unescape after https://github.com/labstack/echo/issues/2447
-	key, _ := url.PathUnescape(c.PathParam("key"))
+	key := c.PathParam("key")
 
 	existsCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

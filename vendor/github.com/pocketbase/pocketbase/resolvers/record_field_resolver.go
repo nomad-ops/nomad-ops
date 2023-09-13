@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/search"
@@ -39,6 +38,15 @@ var plainRequestAuthFields = []string{
 // ensure that `search.FieldResolver` interface is implemented
 var _ search.FieldResolver = (*RecordFieldResolver)(nil)
 
+// CollectionsFinder defines a common interface for retrieving
+// collections and other related models.
+//
+// The interface at the moment is primarily used to avoid circular
+// dependency with the daos.Dao package.
+type CollectionsFinder interface {
+	FindCollectionByNameOrId(collectionNameOrId string) (*models.Collection, error)
+}
+
 // RecordFieldResolver defines a custom search resolver struct for
 // managing Record model search fields.
 //
@@ -48,33 +56,33 @@ var _ search.FieldResolver = (*RecordFieldResolver)(nil)
 //	resolver := resolvers.NewRecordFieldResolver(
 //	    app.Dao(),
 //	    myCollection,
-//	    &models.RequestData{...},
+//	    &models.RequestInfo{...},
 //	    true,
 //	)
 //	provider := search.NewProvider(resolver)
 //	...
 type RecordFieldResolver struct {
-	dao               *daos.Dao
+	dao               CollectionsFinder
 	baseCollection    *models.Collection
 	allowHiddenFields bool
 	allowedFields     []string
 	loadedCollections []*models.Collection
 	joins             []*join // we cannot use a map because the insertion order is not preserved
-	requestData       *models.RequestData
-	staticRequestData map[string]any
+	requestInfo       *models.RequestInfo
+	staticRequestInfo map[string]any
 }
 
 // NewRecordFieldResolver creates and initializes a new `RecordFieldResolver`.
 func NewRecordFieldResolver(
-	dao *daos.Dao,
+	dao CollectionsFinder,
 	baseCollection *models.Collection,
-	requestData *models.RequestData,
+	requestInfo *models.RequestInfo,
 	allowHiddenFields bool,
 ) *RecordFieldResolver {
 	r := &RecordFieldResolver{
 		dao:               dao,
 		baseCollection:    baseCollection,
-		requestData:       requestData,
+		requestInfo:       requestInfo,
 		allowHiddenFields: allowHiddenFields,
 		joins:             []*join{},
 		loadedCollections: []*models.Collection{baseCollection},
@@ -89,17 +97,17 @@ func NewRecordFieldResolver(
 		},
 	}
 
-	r.staticRequestData = map[string]any{}
-	if r.requestData != nil {
-		r.staticRequestData["method"] = r.requestData.Method
-		r.staticRequestData["query"] = r.requestData.Query
-		r.staticRequestData["headers"] = r.requestData.Headers
-		r.staticRequestData["data"] = r.requestData.Data
-		r.staticRequestData["auth"] = nil
-		if r.requestData.AuthRecord != nil {
-			r.requestData.AuthRecord.IgnoreEmailVisibility(true)
-			r.staticRequestData["auth"] = r.requestData.AuthRecord.PublicExport()
-			r.requestData.AuthRecord.IgnoreEmailVisibility(false)
+	r.staticRequestInfo = map[string]any{}
+	if r.requestInfo != nil {
+		r.staticRequestInfo["method"] = r.requestInfo.Method
+		r.staticRequestInfo["query"] = r.requestInfo.Query
+		r.staticRequestInfo["headers"] = r.requestInfo.Headers
+		r.staticRequestInfo["data"] = r.requestInfo.Data
+		r.staticRequestInfo["auth"] = nil
+		if r.requestInfo.AuthRecord != nil {
+			r.requestInfo.AuthRecord.IgnoreEmailVisibility(true)
+			r.staticRequestInfo["auth"] = r.requestInfo.AuthRecord.PublicExport()
+			r.requestInfo.AuthRecord.IgnoreEmailVisibility(false)
 		}
 	}
 
@@ -158,7 +166,7 @@ func (r *RecordFieldResolver) resolveStaticRequestField(path ...string) (*search
 	path[len(path)-1] = lastProp
 
 	// extract value
-	resultVal, err := extractNestedMapVal(r.staticRequestData, path...)
+	resultVal, err := extractNestedMapVal(r.staticRequestInfo, path...)
 
 	if modifier == issetModifier {
 		if err != nil {
@@ -167,7 +175,7 @@ func (r *RecordFieldResolver) resolveStaticRequestField(path ...string) (*search
 		return &search.ResolverResult{Identifier: "TRUE"}, nil
 	}
 
-	// note: we are ignoring the error because requestData is dynamic
+	// note: we are ignoring the error because requestInfo is dynamic
 	// and some of the lookup keys may not be defined for the request
 
 	switch v := resultVal.(type) {

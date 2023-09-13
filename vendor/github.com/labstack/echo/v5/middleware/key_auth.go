@@ -50,7 +50,7 @@ type KeyAuthConfig struct {
 }
 
 // KeyAuthValidator defines a function to validate KeyAuth credentials.
-type KeyAuthValidator func(c echo.Context, key string) (bool, error)
+type KeyAuthValidator func(c echo.Context, key string, source ExtractorSource) (bool, error)
 
 // KeyAuthErrorHandler defines a function which is executed for an invalid key.
 type KeyAuthErrorHandler func(c echo.Context, err error) error
@@ -99,9 +99,9 @@ func (config KeyAuthConfig) ToMiddleware() (echo.MiddlewareFunc, error) {
 		return nil, errors.New("echo key-auth middleware requires a validator function")
 	}
 
-	extractors, err := createExtractors(config.KeyLookup)
-	if err != nil {
-		return nil, fmt.Errorf("echo key-auth middleware could not create key extractor: %w", err)
+	extractors, cErr := createExtractors(config.KeyLookup)
+	if cErr != nil {
+		return nil, fmt.Errorf("echo key-auth middleware could not create key extractor: %w", cErr)
 	}
 	if len(extractors) == 0 {
 		return nil, errors.New("echo key-auth middleware could not create extractors from KeyLookup string")
@@ -116,13 +116,13 @@ func (config KeyAuthConfig) ToMiddleware() (echo.MiddlewareFunc, error) {
 			var lastExtractorErr error
 			var lastValidatorErr error
 			for _, extractor := range extractors {
-				keys, extrErr := extractor(c)
+				keys, source, extrErr := extractor(c)
 				if extrErr != nil {
 					lastExtractorErr = extrErr
 					continue
 				}
 				for _, key := range keys {
-					valid, err := config.Validator(c, key)
+					valid, err := config.Validator(c, key, source)
 					if err != nil {
 						lastValidatorErr = err
 						continue

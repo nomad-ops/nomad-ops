@@ -15,12 +15,20 @@
 // Package fileblob provides a blob implementation that uses the filesystem.
 // Use OpenBucket to construct a *blob.Bucket.
 //
-// By default fileblob stores blob metadata in 'sidecar files' under the original
-// filename but an additional ".attrs" suffix.
-// That behaviour can be changed via Options.Metadata;
+// To avoid partial writes, fileblob writes to a temporary file and then renames
+// the temporary file to the final path on Close. By default, it creates these
+// temporary files in `os.TempDir`. If `os.TempDir` is on a different mount than
+// your base bucket path, the `os.Rename` will fail with `invalid cross-device link`.
+// To avoid this, either configure the temp dir to use by setting the environment
+// variable `TMPDIR`, or set `Options.NoTempDir` to `true` (fileblob will create
+// the temporary files next to the actual files instead of in a temporary directory).
+//
+// By default fileblob stores blob metadata in "sidecar" files under the original
+// filename with an additional ".attrs" suffix.
+// This behaviour can be changed via `Options.Metadata`;
 // writing of those metadata files can be suppressed by setting it to
-// 'MetadataDontWrite' or its equivalent "metadata=skip" in the URL for the opener.
-// In any case, absent any stored metadata many blob.Attributes fields
+// `MetadataDontWrite` or its equivalent "metadata=skip" in the URL for the opener.
+// In either case, absent any stored metadata many `blob.Attributes` fields
 // will be set to default values.
 //
 // # URLs
@@ -102,6 +110,8 @@ const Scheme = "file"
 //
 //   - create_dir: (any non-empty value) the directory is created (using os.MkDirAll)
 //     if it does not already exist.
+//   - no_tmp_dir: (any non-empty value) temporary files are created next to the final
+//     path instead of in os.TempDir.
 //   - base_url: the base URL to use to construct signed URLs; see URLSignerHMAC
 //   - secret_key_path: path to read for the secret key used to construct signed URLs;
 //     see URLSignerHMAC
@@ -149,6 +159,7 @@ var recognizedParams = map[string]bool{
 	"base_url":        true,
 	"secret_key_path": true,
 	"metadata":        true,
+	"no_tmp_dir":      true,
 }
 
 type metadataOption string // Not exported as subject to change.
@@ -187,6 +198,9 @@ func (o *URLOpener) forParams(ctx context.Context, q url.Values) (*Options, erro
 	if q.Get("create_dir") != "" {
 		opts.CreateDir = true
 	}
+	if q.Get("no_tmp_dir") != "" {
+		opts.NoTempDir = true
+	}
 	baseURL := q.Get("base_url")
 	keyPath := q.Get("secret_key_path")
 	if (baseURL == "") != (keyPath == "") {
@@ -217,6 +231,14 @@ type Options struct {
 	// If true, create the directory backing the Bucket if it does not exist
 	// (using os.MkdirAll).
 	CreateDir bool
+
+	// If true, don't use os.TempDir for temporary files, but instead place them
+	// next to the actual files. This may result in "stranded" temporary files
+	// (e.g., if the application is killed before the file cleanup runs).
+	//
+	// If your bucket directory is on a different mount than os.TempDir, you will
+	// need to set this to true, as os.Rename will fail across mount points.
+	NoTempDir bool
 
 	// Refers to the strategy for how to deal with metadata (such as blob.Attributes).
 	// For supported values please see the Metadata* constants.
@@ -642,18 +664,24 @@ func (r *reader) As(i interface{}) bool {
 	return true
 }
 
-func createTemp(path string) (*os.File, error) {
+func createTemp(path string, noTempDir bool) (*os.File, error) {
 	// Use a custom createTemp function rather than os.CreateTemp() as
 	// os.CreateTemp() sets the permissions of the tempfile to 0600, rather than
 	// 0666, making it inconsistent with the directories and attribute files.
 	try := 0
 	for {
 		// Append the current time with nanosecond precision and .tmp to the
-		// path. If the file already exists try again. Nanosecond changes enough
+		// base path. If the file already exists try again. Nanosecond changes enough
 		// between each iteration to make a conflict unlikely. Using the full
 		// time lowers the chance of a collision with a file using a similar
 		// pattern, but has undefined behavior after the year 2262.
-		name := path + "." + strconv.FormatInt(time.Now().UnixNano(), 16) + ".tmp"
+		var name string
+		if noTempDir {
+			name = path
+		} else {
+			name = filepath.Join(os.TempDir(), filepath.Base(path))
+		}
+		name += "." + strconv.FormatInt(time.Now().UnixNano(), 16) + ".tmp"
 		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
 		if os.IsExist(err) {
 			if try++; try < 10000 {
@@ -674,7 +702,7 @@ func (b *bucket) NewTypedWriter(ctx context.Context, key string, contentType str
 	if err := os.MkdirAll(filepath.Dir(path), os.FileMode(0777)); err != nil {
 		return nil, err
 	}
-	f, err := createTemp(path)
+	f, err := createTemp(path, b.opts.NoTempDir)
 	if err != nil {
 		return nil, err
 	}
@@ -787,6 +815,11 @@ type writer struct {
 	*os.File
 	ctx  context.Context
 	path string
+}
+
+func (w *writer) Upload(r io.Reader) error {
+	_, err := w.ReadFrom(r)
+	return err
 }
 
 func (w *writer) Close() error {

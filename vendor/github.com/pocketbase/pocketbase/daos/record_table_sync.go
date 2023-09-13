@@ -10,7 +10,6 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/dbutils"
-	"github.com/pocketbase/pocketbase/tools/list"
 	"github.com/pocketbase/pocketbase/tools/security"
 )
 
@@ -159,10 +158,6 @@ func (dao *Dao) SyncRecordTableSchema(newCollection *models.Collection, oldColle
 			return err
 		}
 
-		if err := txDao.syncRelationDisplayFieldsChanges(newCollection, renamedFieldNames, deletedFieldNames); err != nil {
-			return err
-		}
-
 		return txDao.createCollectionIndexes(newCollection)
 	})
 }
@@ -173,10 +168,23 @@ func (dao *Dao) normalizeSingleVsMultipleFieldChanges(newCollection, oldCollecti
 	}
 
 	return dao.RunInTransaction(func(txDao *Dao) error {
+		// temporary disable the schema error checks to prevent view and trigger errors
+		// when "altering" (aka. deleting and recreating) the non-normalized columns
+		if _, err := txDao.DB().NewQuery("PRAGMA writable_schema = ON").Execute(); err != nil {
+			return err
+		}
+		// executed with defer to make sure that the pragma is always reverted
+		// in case of an error and when nested transactions are used
+		defer txDao.DB().NewQuery("PRAGMA writable_schema = RESET").Execute()
+
 		for _, newField := range newCollection.Schema.Fields() {
-			oldField := oldCollection.Schema.GetFieldById(newField.Id)
-			if oldField == nil {
-				continue
+			// allow to continue even if there is no old field for the cases
+			// when a new field is added and there are already inserted data
+			var isOldMultiple bool
+			if oldField := oldCollection.Schema.GetFieldById(newField.Id); oldField != nil {
+				if opt, ok := oldField.Options.(schema.MultiValuer); ok {
+					isOldMultiple = opt.IsMultiple()
+				}
 			}
 
 			var isNewMultiple bool
@@ -184,20 +192,30 @@ func (dao *Dao) normalizeSingleVsMultipleFieldChanges(newCollection, oldCollecti
 				isNewMultiple = opt.IsMultiple()
 			}
 
-			var isOldMultiple bool
-			if opt, ok := oldField.Options.(schema.MultiValuer); ok {
-				isOldMultiple = opt.IsMultiple()
-			}
-
 			if isOldMultiple == isNewMultiple {
 				continue // no change
 			}
 
-			var updateQuery *dbx.Query
+			// update the column definition by:
+			// 1. inserting a new column with the new definition
+			// 2. copy normalized values from the original column to the new one
+			// 3. drop the original column
+			// 4. rename the new column to the original column
+			// -------------------------------------------------------
+
+			originalName := newField.Name
+			tempName := "_" + newField.Name + security.PseudorandomString(5)
+
+			_, err := txDao.DB().AddColumn(newCollection.Name, tempName, newField.ColDefinition()).Execute()
+			if err != nil {
+				return err
+			}
+
+			var copyQuery *dbx.Query
 
 			if !isOldMultiple && isNewMultiple {
 				// single -> multiple (convert to array)
-				updateQuery = txDao.DB().NewQuery(fmt.Sprintf(
+				copyQuery = txDao.DB().NewQuery(fmt.Sprintf(
 					`UPDATE {{%s}} set [[%s]] = (
 							CASE
 								WHEN COALESCE([[%s]], '') = ''
@@ -212,19 +230,19 @@ func (dao *Dao) normalizeSingleVsMultipleFieldChanges(newCollection, oldCollecti
 							END
 						)`,
 					newCollection.Name,
-					newField.Name,
-					newField.Name,
-					newField.Name,
-					newField.Name,
-					newField.Name,
-					newField.Name,
+					tempName,
+					originalName,
+					originalName,
+					originalName,
+					originalName,
+					originalName,
 				))
 			} else {
 				// multiple -> single (keep only the last element)
 				//
-				// note: for file fields the actual files are not deleted
-				// allowing additional custom handling via migration.
-				updateQuery = txDao.DB().NewQuery(fmt.Sprintf(
+				// note: for file fields the actual file objects are not
+				// deleted allowing additional custom handling via migration
+				copyQuery = txDao.DB().NewQuery(fmt.Sprintf(
 					`UPDATE {{%s}} set [[%s]] = (
 						CASE
 							WHEN COALESCE([[%s]], '[]') = '[]'
@@ -239,66 +257,36 @@ func (dao *Dao) normalizeSingleVsMultipleFieldChanges(newCollection, oldCollecti
 						END
 					)`,
 					newCollection.Name,
-					newField.Name,
-					newField.Name,
-					newField.Name,
-					newField.Name,
-					newField.Name,
-					newField.Name,
+					tempName,
+					originalName,
+					originalName,
+					originalName,
+					originalName,
+					originalName,
 				))
 			}
 
-			if _, err := updateQuery.Execute(); err != nil {
+			// copy the normalized values
+			if _, err := copyQuery.Execute(); err != nil {
+				return err
+			}
+
+			// drop the original column
+			if _, err := txDao.DB().DropColumn(newCollection.Name, originalName).Execute(); err != nil {
+				return err
+			}
+
+			// rename the new column back to the original
+			if _, err := txDao.DB().RenameColumn(newCollection.Name, tempName, originalName).Execute(); err != nil {
 				return err
 			}
 		}
 
-		return nil
+		// revert the pragma and reload the schema
+		_, revertErr := txDao.DB().NewQuery("PRAGMA writable_schema = RESET").Execute()
+
+		return revertErr
 	})
-}
-
-func (dao *Dao) syncRelationDisplayFieldsChanges(collection *models.Collection, renamedFieldNames map[string]string, deletedFieldNames []string) error {
-	if len(renamedFieldNames) == 0 && len(deletedFieldNames) == 0 {
-		return nil // nothing to sync
-	}
-
-	refs, err := dao.FindCollectionReferences(collection)
-	if err != nil {
-		return err
-	}
-
-	for refCollection, refFields := range refs {
-		for _, refField := range refFields {
-			options, _ := refField.Options.(*schema.RelationOptions)
-			if options == nil {
-				continue
-			}
-
-			// remove deleted (if any)
-			newDisplayFields := list.SubtractSlice(options.DisplayFields, deletedFieldNames)
-
-			for old, new := range renamedFieldNames {
-				for i, name := range newDisplayFields {
-					if name == old {
-						newDisplayFields[i] = new
-					}
-				}
-			}
-
-			// has changes
-			if len(list.SubtractSlice(options.DisplayFields, newDisplayFields)) > 0 {
-				options.DisplayFields = newDisplayFields
-
-				// direct collection save to prevent self-referencing
-				// recursion and unnecessary records table sync checks
-				if err := dao.Save(refCollection); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	return nil
 }
 
 func (dao *Dao) dropCollectionIndex(collection *models.Collection) error {
