@@ -255,15 +255,10 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			case <-wi.ctx.Done():
 				return
 			}
-			syncStatus := wi.Source.Status
-			if syncStatus == nil {
-				syncStatus = &domain.SourceStatus{
-					Message: "Syncing",
-				}
-			}
-			syncStatus.Status = domain.SourceStatusStatusSyncing
+			wi.Source.Status.Status = domain.SourceStatusStatusSyncing
+			wi.Source.Status.Message = "Syncing"
 
-			err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, syncStatus)
+			err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, wi.Source.Status)
 			if err != nil {
 				w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 			}
