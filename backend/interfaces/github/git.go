@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -94,6 +93,7 @@ func (g *GitProvider) FetchDesiredState(ctx context.Context, src *domain.Source)
 			Auth:          auth,
 			ReferenceName: plumbing.NewBranchReferenceName(src.Branch),
 			SingleBranch:  true,
+			Progress:      nil,
 		})
 		if err == git.NoErrAlreadyUpToDate {
 			g.logger.LogTrace(ctx, "Already up to date")
@@ -123,7 +123,7 @@ func (g *GitProvider) FetchDesiredState(ctx context.Context, src *domain.Source)
 			// Depth:         1, https://github.com/go-git/go-git/issues/207
 			NoCheckout:    false,
 			Auth:          auth,
-			Progress:      os.Stdout,
+			Progress:      nil,
 			SingleBranch:  true,
 			ReferenceName: plumbing.NewBranchReferenceName(src.Branch),
 		})
