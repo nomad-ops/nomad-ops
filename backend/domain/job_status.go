@@ -1,5 +1,7 @@
 package domain
 
+import "encoding/json"
+
 type JobStatus struct {
 
 	// groups
@@ -20,4 +22,7 @@ type JobStatus struct {
 
 	// namespace
 	Namespace string `json:"namespace,omitempty"`
+
+	// diff
+	Diff json.RawMessage `json:"diff,omitempty"`
 }

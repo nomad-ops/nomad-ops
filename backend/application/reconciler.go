@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -45,7 +46,7 @@ type GetCurrentClusterStateOptions struct {
 type UpdateJobInfo struct {
 	Updated          bool
 	Created          bool
-	Diff             string
+	Diff             json.RawMessage
 	DeploymentStatus DeploymentStatus
 }
 

@@ -2,6 +2,7 @@ package nomadcluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -306,7 +307,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 
 	return &application.UpdateJobInfo{
 		Updated: true, // TODO check for creation, for now everything is an update...which is kinda true
-		Diff:    log.ToJSONString(resp.Diff),
+		Diff:    json.RawMessage(log.ToJSONString(resp.Diff)),
 		DeploymentStatus: application.DeploymentStatus{
 			Status: deploymentStatus,
 		},
