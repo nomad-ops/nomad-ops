@@ -164,6 +164,7 @@ func (r *ReconciliationManager) OnReconcile(ctx context.Context,
 			DeploymentStatus: info.DeploymentStatus.Status,
 			Groups:           map[string]domain.GroupStatus{},
 			Namespace:        *job.Namespace,
+			Diff:             info.Diff,
 		}
 		if j, ok := currentState.CurrentJobs[k]; ok {
 			jobStatus.Status = strPtrToStr(j.Status)
