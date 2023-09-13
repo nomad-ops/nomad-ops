@@ -180,6 +180,8 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				return nil
 			case <-ctx.Done():
 				return ctx.Err()
+			case <-workerCtx.Done():
+				return workerCtx.Err()
 			}
 		},
 		updateCh: make(chan *domain.Source),
@@ -189,6 +191,8 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				return nil
 			case <-ctx.Done():
 				return ctx.Err()
+			case <-workerCtx.Done():
+				return workerCtx.Err()
 			}
 		},
 	}
@@ -204,6 +208,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 	w.watchList[origSrc.ID] = wi
 
 	go func(wi *WatchInfo) {
+		defer wi.cancel()
 		w.logger.LogInfo(wi.ctx, "Starting watch on %s %s - %s", wi.Source.Name, wi.Source.URL, wi.Source.Path)
 		defer func() {
 			w.logger.LogInfo(wi.ctx, "Stopped watch on %s %s - %s", wi.Source.Name, wi.Source.URL, wi.Source.Path)
@@ -211,6 +216,16 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 		defer func() {
 			if r := recover(); r != nil {
 				w.logger.LogError(wi.ctx, "Recovered worker %s - %s:%v - %s", wi.Source.URL, wi.Source.Path, r, string(debug.Stack()))
+				err := w.StopSourceWatch(ctx, wi.Source.ID)
+				if err != nil {
+					// we panic to force a restart
+					panic(err)
+				}
+				err = w.WatchSource(ctx, origSrc, cb)
+				if err != nil {
+					// we panic to force a restart
+					panic(err)
+				}
 			}
 		}()
 
