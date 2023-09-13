@@ -278,7 +278,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 	}
 	if deployment != nil {
 		deploymentStatus = deployment.Status
-		c.logger.LogInfo(ctx, "DeploymentStatus:%s %v", *job.ID, deploymentStatus)
+		c.logger.LogTrace(ctx, "DeploymentStatus:%s %v", *job.ID, deploymentStatus)
 	}
 
 	if !hasUpdate(resp, restart, src.Force) {
@@ -291,7 +291,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 		}, nil
 	}
 
-	c.logger.LogInfo(ctx, "Job Diff:%v", log.ToJSONString(resp.Diff))
+	c.logger.LogTrace(ctx, "Job Diff:%v", log.ToJSONString(resp.Diff))
 
 	if !src.Paused {
 		regResp, _, err := c.client.Jobs().Register(job.Job, c.getWriteOptions(ctx, src, job))
@@ -304,6 +304,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 
 	return &application.UpdateJobInfo{
 		Updated: true, // TODO check for creation, for now everything is an update...which is kinda true
+		Diff:    log.ToJSONString(resp.Diff),
 		DeploymentStatus: application.DeploymentStatus{
 			Status: deploymentStatus,
 		},

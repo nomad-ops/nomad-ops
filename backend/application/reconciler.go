@@ -45,6 +45,7 @@ type GetCurrentClusterStateOptions struct {
 type UpdateJobInfo struct {
 	Updated          bool
 	Created          bool
+	Diff             string
 	DeploymentStatus DeploymentStatus
 }
 
