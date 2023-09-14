@@ -50,7 +50,7 @@ type RepoWatcherConfig struct {
 }
 
 type SourceStatusPatcher interface {
-	SetSourceStatus(srcID string, s *domain.SourceStatus) error
+	SetSourceStatus(ctx context.Context, src *domain.Source, s *domain.SourceStatus) error
 }
 
 func CreateRepoWatcher(ctx context.Context,
@@ -197,13 +197,19 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 		},
 	}
 
-	err := w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+	err := w.sourceStatusPatcher.SetSourceStatus(workerCtx, wi.Source, &domain.SourceStatus{
 		Message: "Waiting on first sync",
 		Status:  domain.SourceStatusStatusInit,
 	})
 	if err != nil {
 		w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 	}
+
+	// Test
+	// wi.Source.Status = &domain.SourceStatus{
+	// 	Message: "Waiting on first sync",
+	// 	Status:  domain.SourceStatusStatusInit,
+	// }
 
 	w.watchList[origSrc.ID] = wi
 
@@ -273,7 +279,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			wi.Source.Status.Status = domain.SourceStatusStatusSyncing
 			wi.Source.Status.Message = "Syncing"
 
-			err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, wi.Source.Status)
+			err = w.sourceStatusPatcher.SetSourceStatus(workerCtx, wi.Source, wi.Source.Status)
 			if err != nil {
 				w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 			}
@@ -281,7 +287,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			desiredState, err := w.dsw.FetchDesiredState(wi.ctx, wi.Source)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not FetchDesiredState: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
-				err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+				err = w.sourceStatusPatcher.SetSourceStatus(workerCtx, wi.Source, &domain.SourceStatus{
 					Status:        domain.SourceStatusStatusError,
 					Message:       err.Error(),
 					LastCheckTime: toTimePtr(time.Now()),
@@ -342,7 +348,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 				t, err := w.vaultRepo.GetVaultToken(ctx, wi.Source.VaultTokenID)
 				if err != nil {
 					w.logger.LogError(wi.ctx, "Could not GetVaultToken: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
-					err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+					err = w.sourceStatusPatcher.SetSourceStatus(workerCtx, wi.Source, &domain.SourceStatus{
 						Status:        domain.SourceStatusStatusError,
 						Message:       err.Error(),
 						LastCheckTime: toTimePtr(time.Now()),
@@ -404,7 +410,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			err = w.applyOverrides(wi.ctx, wi.Source, desiredState)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not apply overrides: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
-				err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+				err = w.sourceStatusPatcher.SetSourceStatus(workerCtx, wi.Source, &domain.SourceStatus{
 					Status:        domain.SourceStatusStatusError,
 					Message:       err.Error(),
 					LastCheckTime: toTimePtr(time.Now()),
@@ -461,7 +467,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 			changeInfo, err := wi.Reconciler(wi.ctx, wi.Source, desiredState, restart)
 			if err != nil {
 				w.logger.LogError(wi.ctx, "Could not Reconcile: %v - %v - %v", err, wi.Source.URL, wi.Source.Path)
-				err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, &domain.SourceStatus{
+				err = w.sourceStatusPatcher.SetSourceStatus(workerCtx, wi.Source, &domain.SourceStatus{
 					Status:        domain.SourceStatusStatusError,
 					Message:       err.Error(),
 					LastCheckTime: toTimePtr(time.Now()),
@@ -578,7 +584,7 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 
 			wi.Source.Status.DetermineSyncStatus()
 
-			err = w.sourceStatusPatcher.SetSourceStatus(wi.Source.ID, wi.Source.Status)
+			err = w.sourceStatusPatcher.SetSourceStatus(workerCtx, wi.Source, wi.Source.Status)
 			if err != nil {
 				w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 			}
