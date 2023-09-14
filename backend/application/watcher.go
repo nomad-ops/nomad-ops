@@ -205,12 +205,6 @@ func (w *RepoWatcher) WatchSource(ctx context.Context, origSrc *domain.Source, c
 		w.logger.LogError(ctx, "Could not SetSourceStatus on %s:%v", wi.Source.ID, err)
 	}
 
-	// Test
-	// wi.Source.Status = &domain.SourceStatus{
-	// 	Message: "Waiting on first sync",
-	// 	Status:  domain.SourceStatusStatusInit,
-	// }
-
 	w.watchList[origSrc.ID] = wi
 
 	go func(wi *WatchInfo) {
