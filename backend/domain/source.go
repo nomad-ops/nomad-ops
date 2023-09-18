@@ -85,8 +85,8 @@ func initSourceCollection(app core.App,
 	form.ListRule = types.Pointer("@request.auth.id != ''")
 	form.ViewRule = types.Pointer("@request.auth.id != ''")
 	form.CreateRule = types.Pointer("@request.auth.id != ''")
-	form.UpdateRule = types.Pointer("@request.auth.id != '' && (teams = '' || teams.members.id ?= @request.auth.id)")
-	form.DeleteRule = types.Pointer("@request.auth.id != '' && (teams = '' || teams.members.id ?= @request.auth.id)")
+	form.UpdateRule = types.Pointer("@request.auth.id != '' && (teams:length = 0 || teams.members.id ?= @request.auth.id)")
+	form.DeleteRule = types.Pointer("@request.auth.id != '' && (teams:length = 0 || teams.members.id ?= @request.auth.id)")
 
 	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "name",

@@ -46,8 +46,8 @@ func (s *PocketBaseStore) ListSources(ctx context.Context, opts application.List
 	return res, nil
 }
 
-func (s *PocketBaseStore) SetSourceStatus(srcID string, status *domain.SourceStatus) error {
-	record, err := s.cfg.App.Dao().FindRecordById("sources", srcID)
+func (s *PocketBaseStore) SetSourceStatus(ctx context.Context, src *domain.Source, status *domain.SourceStatus) error {
+	record, err := s.cfg.App.Dao().FindRecordById("sources", src.ID)
 	if err != nil {
 		return err
 	}
@@ -57,6 +57,8 @@ func (s *PocketBaseStore) SetSourceStatus(srcID string, status *domain.SourceSta
 	if err := s.cfg.App.Dao().SaveRecord(record); err != nil {
 		return err
 	}
+
+	src.Status = status
 
 	return nil
 }

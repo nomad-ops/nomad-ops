@@ -9,6 +9,7 @@ import { orange, red, teal } from '@mui/material/colors';
 import CheckIcon from '@mui/icons-material/Check';
 import ErrorIcon from '@mui/icons-material/Error';
 import LoopIcon from '@mui/icons-material/Loop';
+import DifferenceIcon from '@mui/icons-material/Difference';
 import AddIcon from '@mui/icons-material/Add';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import SyncIcon from '@mui/icons-material/Sync';
@@ -29,6 +30,7 @@ import { Team } from '../domain/Team';
 import TeamFilter from '../components/TeamFilter';
 import { useAuth } from '../services/auth/useAuth';
 import SourceDetailDrawer from '../components/SourceDetailDrawer';
+import SourceDiffDrawer from '../components/SourceDiffDrawer';
 import { VaultToken } from '../domain/VaultToken';
 
 interface IFormInput {
@@ -290,7 +292,7 @@ export default function Sources() {
         source: undefined
     });
 
-    const toggleDrawer =
+    const toggleDetailDrawer =
         (open: boolean, source: Source | undefined) =>
             (event: React.KeyboardEvent | React.MouseEvent) => {
                 if (
@@ -302,6 +304,28 @@ export default function Sources() {
                 }
 
                 setDetailDrawerState({ ...detailDrawerState, open: open, source: source });
+            };
+
+    const [diffDrawerState, setDiffDrawerState] = React.useState<{
+        open: boolean,
+        source: Source | undefined
+    }>({
+        open: false,
+        source: undefined
+    });
+    
+    const toggleDiffDrawer =
+        (open: boolean, source: Source | undefined) =>
+            (event: React.KeyboardEvent | React.MouseEvent) => {
+                if (
+                    event.type === 'keydown' &&
+                    ((event as React.KeyboardEvent).key === 'Tab' ||
+                       (event as React.KeyboardEvent).key === 'Shift')
+                ) {
+                   return;
+                }
+    
+                setDiffDrawerState({ ...diffDrawerState, open: open, source: source });
             };
 
     return <div>
@@ -431,12 +455,24 @@ export default function Sources() {
                             title={k.name}
                             subheader={k.created ? new Date(k.created).toLocaleString() : ""}
                             action={
-                                k.status && k.status.jobs && Object.keys(k.status.jobs).length > 0 ? <IconButton
+
+                                <div>
+                                {k.status && k.status.jobs && Object.keys(k.status.jobs).length > 0 ? <IconButton
                                     color='primary'
-                                    onClick={toggleDrawer(true, k)}
+                                    onClick={toggleDetailDrawer(true, k)}
                                     aria-label="info">
-                                    <InfoIcon />
-                                </IconButton> : undefined
+                                    <InfoIcon /></IconButton> : undefined}
+
+                                {k.status && k.status.jobs && Object.keys(k.status.jobs).length > 0 && 
+                                    // Check if diff exists in any job
+                                    Object.keys(k.status.jobs).find((job) => {
+                                    return k.status?.jobs![job].diff !== undefined;
+                                    }) ? <IconButton
+                                    color='primary'
+                                    onClick={toggleDiffDrawer(true, k)}
+                                    aria-label="diff">
+                                    <DifferenceIcon /></IconButton> : undefined}
+                                </div>
                             }
                         />
                         <CardContent>
@@ -889,7 +925,10 @@ export default function Sources() {
             </DialogActions>
         </Dialog>
         {detailDrawerState.source ? <SourceDetailDrawer open={detailDrawerState.open}
-            onClose={toggleDrawer(false, undefined)}
+            onClose={toggleDetailDrawer(false, undefined)}
             source={detailDrawerState.source}></SourceDetailDrawer> : undefined}
+        {diffDrawerState.source ? <SourceDiffDrawer open={diffDrawerState.open}
+            onClose={toggleDiffDrawer(false, undefined)}
+            source={diffDrawerState.source}></SourceDiffDrawer> : undefined}
     </div >;
 }
