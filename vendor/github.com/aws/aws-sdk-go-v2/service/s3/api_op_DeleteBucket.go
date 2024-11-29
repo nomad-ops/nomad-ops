@@ -4,24 +4,54 @@ package s3
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
-	"github.com/aws/aws-sdk-go-v2/internal/v4a"
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
-	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
+	"github.com/aws/smithy-go/ptr"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Deletes the S3 bucket. All objects (including all object versions and delete
 // markers) in the bucket must be deleted before the bucket itself can be deleted.
+//
+//   - Directory buckets - If multipart uploads in a directory bucket are in
+//     progress, you can't delete the bucket until all the in-progress multipart
+//     uploads are aborted or completed.
+//
+//   - Directory buckets - For directory buckets, you must make requests for this
+//     API operation to the Regional endpoint. These endpoints support path-style
+//     requests in the format
+//     https://s3express-control.region_code.amazonaws.com/bucket-name .
+//     Virtual-hosted-style requests aren't supported. For more information, see [Regional and Zonal endpoints]in
+//     the Amazon S3 User Guide.
+//
+// Permissions
+//
+//   - General purpose bucket permissions - You must have the s3:DeleteBucket
+//     permission on the specified bucket in a policy.
+//
+//   - Directory bucket permissions - You must have the s3express:DeleteBucket
+//     permission in an IAM identity-based policy instead of a bucket policy.
+//     Cross-account access to this API operation isn't supported. This operation can
+//     only be performed by the Amazon Web Services account that owns the resource. For
+//     more information about directory bucket policies and permissions, see [Amazon Web Services Identity and Access Management (IAM) for S3 Express One Zone]in the
+//     Amazon S3 User Guide.
+//
+// HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
+// s3express-control.region.amazonaws.com .
+//
 // The following operations are related to DeleteBucket :
-//   - CreateBucket (https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html)
-//   - DeleteObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html)
+//
+// [CreateBucket]
+//
+// [DeleteObject]
+//
+// [DeleteObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html
+// [Regional and Zonal endpoints]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-Regions-and-Zones.html
+// [CreateBucket]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
+// [Amazon Web Services Identity and Access Management (IAM) for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam.html
 func (c *Client) DeleteBucket(ctx context.Context, params *DeleteBucketInput, optFns ...func(*Options)) (*DeleteBucketOutput, error) {
 	if params == nil {
 		params = &DeleteBucketInput{}
@@ -41,15 +71,36 @@ type DeleteBucketInput struct {
 
 	// Specifies the bucket being deleted.
 	//
+	// Directory buckets - When you use this operation with a directory bucket, you
+	// must use path-style requests in the format
+	// https://s3express-control.region_code.amazonaws.com/bucket-name .
+	// Virtual-hosted-style requests aren't supported. Directory bucket names must be
+	// unique in the chosen Availability Zone. Bucket names must also follow the format
+	// bucket_base_name--az_id--x-s3 (for example,  DOC-EXAMPLE-BUCKET--usw2-az1--x-s3
+	// ). For information about bucket naming restrictions, see [Directory bucket naming rules]in the Amazon S3 User
+	// Guide
+	//
+	// [Directory bucket naming rules]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html
+	//
 	// This member is required.
 	Bucket *string
 
-	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request fails with the HTTP status code 403 Forbidden
-	// (access denied).
+	// The account ID of the expected bucket owner. If the account ID that you provide
+	// does not match the actual owner of the bucket, the request fails with the HTTP
+	// status code 403 Forbidden (access denied).
+	//
+	// For directory buckets, this header is not supported in this API operation. If
+	// you specify this header, the request fails with the HTTP status code 501 Not
+	// Implemented .
 	ExpectedBucketOwner *string
 
 	noSmithyDocumentSerde
+}
+
+func (in *DeleteBucketInput) bindEndpointParams(p *EndpointParameters) {
+
+	p.Bucket = in.Bucket
+	p.UseS3ExpressControlEndpoint = ptr.Bool(true)
 }
 
 type DeleteBucketOutput struct {
@@ -60,6 +111,9 @@ type DeleteBucketOutput struct {
 }
 
 func (c *Client) addOperationDeleteBucketMiddlewares(stack *middleware.Stack, options Options) (err error) {
+	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+		return err
+	}
 	err = stack.Serialize.Add(&awsRestxml_serializeOpDeleteBucket{}, middleware.After)
 	if err != nil {
 		return err
@@ -68,34 +122,35 @@ func (c *Client) addOperationDeleteBucketMiddlewares(stack *middleware.Stack, op
 	if err != nil {
 		return err
 	}
+	if err := addProtocolFinalizerMiddlewares(stack, options, "DeleteBucket"); err != nil {
+		return fmt.Errorf("add protocol finalizers: %v", err)
+	}
+
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
 		return err
 	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
+	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
+	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRetry(stack, options); err != nil {
 		return err
 	}
-	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
+	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
 	if err = addClientUserAgent(stack, options); err != nil {
@@ -107,10 +162,19 @@ func (c *Client) addOperationDeleteBucketMiddlewares(stack *middleware.Stack, op
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = swapWithCustomHTTPSignerMiddleware(stack, options); err != nil {
+	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addDeleteBucketResolveEndpointMiddleware(stack, options); err != nil {
+	if err = addPutBucketContextMiddleware(stack); err != nil {
+		return err
+	}
+	if err = addTimeOffsetBuild(stack, c); err != nil {
+		return err
+	}
+	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addIsExpressUserAgent(stack); err != nil {
 		return err
 	}
 	if err = addOpDeleteBucketValidationMiddleware(stack); err != nil {
@@ -122,7 +186,7 @@ func (c *Client) addOperationDeleteBucketMiddlewares(stack *middleware.Stack, op
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addDeleteBucketUpdateEndpoint(stack, options); err != nil {
@@ -140,7 +204,7 @@ func (c *Client) addOperationDeleteBucketMiddlewares(stack *middleware.Stack, op
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addendpointDisableHTTPSMiddleware(stack, options); err != nil {
+	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
@@ -160,7 +224,6 @@ func newServiceMetadataMiddleware_opDeleteBucket(region string) *awsmiddleware.R
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		SigningName:   "s3",
 		OperationName: "DeleteBucket",
 	}
 }
@@ -220,140 +283,4 @@ func addDeleteBucketPayloadAsUnsigned(stack *middleware.Stack, options Options) 
 	v4.RemoveContentSHA256HeaderMiddleware(stack)
 	v4.RemoveComputePayloadSHA256Middleware(stack)
 	return v4.AddUnsignedPayloadMiddleware(stack)
-}
-
-type opDeleteBucketResolveEndpointMiddleware struct {
-	EndpointResolver EndpointResolverV2
-	BuiltInResolver  builtInParameterResolver
-}
-
-func (*opDeleteBucketResolveEndpointMiddleware) ID() string {
-	return "ResolveEndpointV2"
-}
-
-func (m *opDeleteBucketResolveEndpointMiddleware) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
-	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
-) {
-	if awsmiddleware.GetRequiresLegacyEndpoints(ctx) {
-		return next.HandleSerialize(ctx, in)
-	}
-
-	req, ok := in.Request.(*smithyhttp.Request)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	input, ok := in.Parameters.(*DeleteBucketInput)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	if m.EndpointResolver == nil {
-		return out, metadata, fmt.Errorf("expected endpoint resolver to not be nil")
-	}
-
-	params := EndpointParameters{}
-
-	m.BuiltInResolver.ResolveBuiltIns(&params)
-
-	params.Bucket = input.Bucket
-
-	var resolvedEndpoint smithyendpoints.Endpoint
-	resolvedEndpoint, err = m.EndpointResolver.ResolveEndpoint(ctx, params)
-	if err != nil {
-		return out, metadata, fmt.Errorf("failed to resolve service endpoint, %w", err)
-	}
-
-	req.URL = &resolvedEndpoint.URI
-
-	for k := range resolvedEndpoint.Headers {
-		req.Header.Set(
-			k,
-			resolvedEndpoint.Headers.Get(k),
-		)
-	}
-
-	authSchemes, err := internalauth.GetAuthenticationSchemes(&resolvedEndpoint.Properties)
-	if err != nil {
-		var nfe *internalauth.NoAuthenticationSchemesFoundError
-		if errors.As(err, &nfe) {
-			// if no auth scheme is found, default to sigv4
-			signingName := "s3"
-			signingRegion := m.BuiltInResolver.(*builtInResolver).Region
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			ctx = s3cust.SetSignerVersion(ctx, internalauth.SigV4)
-		}
-		var ue *internalauth.UnSupportedAuthenticationSchemeSpecifiedError
-		if errors.As(err, &ue) {
-			return out, metadata, fmt.Errorf(
-				"This operation requests signer version(s) %v but the client only supports %v",
-				ue.UnsupportedSchemes,
-				internalauth.SupportedSchemes,
-			)
-		}
-	}
-
-	for _, authScheme := range authSchemes {
-		switch authScheme.(type) {
-		case *internalauth.AuthenticationSchemeV4:
-			v4Scheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4)
-			var signingName, signingRegion string
-			if v4Scheme.SigningName == nil {
-				signingName = "s3"
-			} else {
-				signingName = *v4Scheme.SigningName
-			}
-			if v4Scheme.SigningRegion == nil {
-				signingRegion = m.BuiltInResolver.(*builtInResolver).Region
-			} else {
-				signingRegion = *v4Scheme.SigningRegion
-			}
-			if v4Scheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4Scheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			ctx = s3cust.SetSignerVersion(ctx, v4Scheme.Name)
-			break
-		case *internalauth.AuthenticationSchemeV4A:
-			v4aScheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4A)
-			if v4aScheme.SigningName == nil {
-				v4aScheme.SigningName = aws.String("s3")
-			}
-			if v4aScheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4aScheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, *v4aScheme.SigningName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, v4aScheme.SigningRegionSet[0])
-			ctx = s3cust.SetSignerVersion(ctx, v4a.Version)
-			break
-		case *internalauth.AuthenticationSchemeNone:
-			break
-		}
-	}
-
-	return next.HandleSerialize(ctx, in)
-}
-
-func addDeleteBucketResolveEndpointMiddleware(stack *middleware.Stack, options Options) error {
-	return stack.Serialize.Insert(&opDeleteBucketResolveEndpointMiddleware{
-		EndpointResolver: options.EndpointResolverV2,
-		BuiltInResolver: &builtInResolver{
-			Region:                         options.Region,
-			UseFIPS:                        options.EndpointOptions.UseFIPSEndpoint,
-			UseDualStack:                   options.EndpointOptions.UseDualStackEndpoint,
-			Endpoint:                       options.BaseEndpoint,
-			ForcePathStyle:                 options.UsePathStyle,
-			Accelerate:                     options.UseAccelerate,
-			DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
-			UseArnRegion:                   options.UseARNRegion,
-		},
-	}, "ResolveEndpoint", middleware.After)
 }

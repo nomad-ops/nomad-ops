@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/daos"
@@ -48,6 +49,9 @@ type App interface {
 	// the users table from LogsDao will result in error.
 	LogsDao() *daos.Dao
 
+	// Logger returns the active app logger.
+	Logger() *slog.Logger
+
 	// DataDir returns the app data directory path.
 	DataDir() string
 
@@ -55,15 +59,17 @@ type App interface {
 	// (used for settings encryption).
 	EncryptionEnv() string
 
-	// IsDebug returns whether the app is in debug mode
-	// (showing more detailed error logs, executed sql statements, etc.).
-	IsDebug() bool
+	// IsDev returns whether the app is in dev mode.
+	IsDev() bool
 
 	// Settings returns the loaded app settings.
 	Settings() *settings.Settings
 
-	// Cache returns the app internal cache store.
+	// Deprecated: Use app.Store() instead.
 	Cache() *store.Store[any]
+
+	// Store returns the app runtime store.
+	Store() *store.Store[any]
 
 	// SubscriptionsBroker returns the app realtime subscriptions broker instance.
 	SubscriptionsBroker() *subscriptions.Broker
@@ -285,14 +291,14 @@ type App interface {
 	// SSE client connection.
 	OnRealtimeDisconnectRequest() *hook.Hook[*RealtimeDisconnectEvent]
 
-	// OnRealtimeBeforeMessage hook is triggered right before sending
+	// OnRealtimeBeforeMessageSend hook is triggered right before sending
 	// an SSE message to a client.
 	//
 	// Returning [hook.StopPropagation] will prevent sending the message.
 	// Returning any other non-nil error will close the realtime connection.
 	OnRealtimeBeforeMessageSend() *hook.Hook[*RealtimeMessageEvent]
 
-	// OnRealtimeBeforeMessage hook is triggered right after sending
+	// OnRealtimeAfterMessageSend hook is triggered right after sending
 	// an SSE message to a client.
 	OnRealtimeAfterMessageSend() *hook.Hook[*RealtimeMessageEvent]
 

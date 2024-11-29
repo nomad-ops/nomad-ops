@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase/core"
@@ -131,6 +132,7 @@ func (form *CollectionUpsert) Validate() error {
 			validation.Match(collectionNameRegex),
 			validation.By(form.ensureNoSystemNameChange),
 			validation.By(form.checkUniqueName),
+			validation.By(form.checkForVia),
 		),
 		// validates using the type's own validation rules + some collection's specifics
 		validation.Field(
@@ -161,6 +163,19 @@ func (form *CollectionUpsert) Validate() error {
 		validation.Field(&form.Indexes, validation.By(form.checkIndexes)),
 		validation.Field(&form.Options, validation.By(form.checkOptions)),
 	)
+}
+
+func (form *CollectionUpsert) checkForVia(value any) error {
+	v, _ := value.(string)
+	if v == "" {
+		return nil
+	}
+
+	if strings.Contains(strings.ToLower(v), "_via_") {
+		return validation.NewError("validation_invalid_name", "The name of the collection cannot contain '_via_'.")
+	}
+
+	return nil
 }
 
 func (form *CollectionUpsert) checkUniqueName(value any) error {
@@ -370,7 +385,7 @@ func (form *CollectionUpsert) checkRule(value any) error {
 
 	_, err := search.FilterData(*v).BuildExpr(r)
 	if err != nil {
-		return validation.NewError("validation_invalid_rule", "Invalid filter rule.")
+		return validation.NewError("validation_invalid_rule", "Invalid filter rule. Raw error: "+err.Error())
 	}
 
 	return nil

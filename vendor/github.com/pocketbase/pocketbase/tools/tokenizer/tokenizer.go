@@ -21,6 +21,8 @@ const eof = rune(0)
 // DefaultSeparators is a list with the default token separator characters.
 var DefaultSeparators = []rune{','}
 
+var whitespaceChars = []rune{'\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0}
+
 // NewFromString creates new Tokenizer from the provided string.
 func NewFromString(str string) *Tokenizer {
 	return New(strings.NewReader(str))
@@ -33,11 +35,11 @@ func NewFromBytes(b []byte) *Tokenizer {
 
 // New creates new Tokenizer from the provided reader with DefaultSeparators.
 func New(r io.Reader) *Tokenizer {
-	return &Tokenizer{
-		r:             bufio.NewReader(r),
-		separators:    DefaultSeparators,
-		keepSeparator: false,
-	}
+	t := &Tokenizer{r: bufio.NewReader(r)}
+
+	t.Separators(DefaultSeparators...)
+
+	return t
 }
 
 // Tokenizer defines a struct that parses a reader into tokens while
@@ -45,54 +47,67 @@ func New(r io.Reader) *Tokenizer {
 type Tokenizer struct {
 	r *bufio.Reader
 
-	separators    []rune
-	keepSeparator bool
+	trimCutset        string
+	separators        []rune
+	keepSeparator     bool
+	keepEmptyTokens   bool
+	ignoreParenthesis bool
 }
 
 // Separators defines the provided separatos of the current Tokenizer.
-func (s *Tokenizer) Separators(separators ...rune) {
-	s.separators = separators
+func (t *Tokenizer) Separators(separators ...rune) {
+	t.separators = separators
+
+	t.rebuildTrimCutset()
 }
 
 // KeepSeparator defines whether to keep the separator rune as part
 // of the token (default to false).
-func (s *Tokenizer) KeepSeparator(state bool) {
-	s.keepSeparator = state
+func (t *Tokenizer) KeepSeparator(state bool) {
+	t.keepSeparator = state
 }
 
-// Scan reads and returns the next available token from the Tokenizer's buffer (trimmed).
+// KeepEmptyTokens defines whether to keep empty tokens on Scan() (default to false).
+func (t *Tokenizer) KeepEmptyTokens(state bool) {
+	t.keepEmptyTokens = state
+}
+
+// IgnoreParenthesis defines whether to ignore the parenthesis boundaries
+// and to treat the '(' and ')' as regular characters.
+func (t *Tokenizer) IgnoreParenthesis(state bool) {
+	t.ignoreParenthesis = state
+}
+
+// Scan reads and returns the next available token from the Tokenizer's buffer (trimmed!).
+//
+// Empty tokens are skipped if t.keepEmptyTokens is not set (which is the default).
 //
 // Returns [io.EOF] error when there are no more tokens to scan.
-func (s *Tokenizer) Scan() (string, error) {
-	ch := s.read()
-
+func (t *Tokenizer) Scan() (string, error) {
+	ch := t.read()
 	if ch == eof {
 		return "", io.EOF
 	}
+	t.unread()
 
-	if isWhitespaceRune(ch) {
-		s.readWhiteSpaces()
-	} else {
-		s.unread()
-	}
-
-	token, err := s.readToken()
+	token, err := t.readToken()
 	if err != nil {
 		return "", err
 	}
 
-	// read all remaining whitespaces
-	s.readWhiteSpaces()
+	if !t.keepEmptyTokens && token == "" {
+		return t.Scan()
+	}
 
 	return token, err
 }
 
 // ScanAll reads the entire Tokenizer's buffer and return all found tokens.
-func (s *Tokenizer) ScanAll() ([]string, error) {
+func (t *Tokenizer) ScanAll() ([]string, error) {
 	tokens := []string{}
 
 	for {
-		token, err := s.Scan()
+		token, err := t.Scan()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -108,35 +123,35 @@ func (s *Tokenizer) ScanAll() ([]string, error) {
 }
 
 // readToken reads a single token from the buffer and returns it.
-func (s *Tokenizer) readToken() (string, error) {
+func (t *Tokenizer) readToken() (string, error) {
 	var buf bytes.Buffer
 	var parenthesis int
 	var quoteCh rune
 	var prevCh rune
 
 	for {
-		ch := s.read()
+		ch := t.read()
 
 		if ch == eof {
 			break
 		}
 
-		if !isEscapeRune(prevCh) {
-			if ch == '(' && quoteCh == eof {
-				parenthesis++
-			} else if ch == ')' && parenthesis > 0 && quoteCh == eof {
-				parenthesis--
-			} else if isQuoteRune(ch) {
+		if !t.isEscapeRune(prevCh) {
+			if !t.ignoreParenthesis && ch == '(' && quoteCh == eof {
+				parenthesis++ // opening parenthesis
+			} else if !t.ignoreParenthesis && ch == ')' && parenthesis > 0 && quoteCh == eof {
+				parenthesis-- // closing parenthesis
+			} else if t.isQuoteRune(ch) {
 				if quoteCh == ch {
-					quoteCh = eof // reached closing quote
+					quoteCh = eof // closing quote
 				} else if quoteCh == eof {
 					quoteCh = ch // opening quote
 				}
 			}
 		}
 
-		if s.isSeperatorRune(ch) && parenthesis == 0 && quoteCh == eof {
-			if s.keepSeparator {
+		if t.isSeperatorRune(ch) && parenthesis == 0 && quoteCh == eof {
+			if t.keepSeparator {
 				buf.WriteRune(ch)
 			}
 			break
@@ -150,20 +165,20 @@ func (s *Tokenizer) readToken() (string, error) {
 		return "", fmt.Errorf("unbalanced parenthesis or quoted expression: %q", buf.String())
 	}
 
-	return buf.String(), nil
+	return strings.Trim(buf.String(), t.trimCutset), nil
 }
 
 // readWhiteSpaces consumes all contiguous whitespace runes.
-func (s *Tokenizer) readWhiteSpaces() {
+func (t *Tokenizer) readWhiteSpaces() {
 	for {
-		ch := s.read()
+		ch := t.read()
 
 		if ch == eof {
 			break
 		}
 
-		if !s.isSeperatorRune(ch) {
-			s.unread()
+		if !t.isWhitespaceRune(ch) {
+			t.unread()
 			break
 		}
 	}
@@ -171,8 +186,8 @@ func (s *Tokenizer) readWhiteSpaces() {
 
 // read reads the next rune from the buffered reader.
 // Returns the `rune(0)` if an error or `io.EOF` occurs.
-func (s *Tokenizer) read() rune {
-	ch, _, err := s.r.ReadRune()
+func (t *Tokenizer) read() rune {
+	ch, _, err := t.r.ReadRune()
 	if err != nil {
 		return eof
 	}
@@ -181,13 +196,27 @@ func (s *Tokenizer) read() rune {
 }
 
 // unread places the previously read rune back on the reader.
-func (s *Tokenizer) unread() error {
-	return s.r.UnreadRune()
+func (t *Tokenizer) unread() error {
+	return t.r.UnreadRune()
+}
+
+// rebuildTrimCutset rebuilds the tokenizer trimCutset based on its separator runes.
+func (t *Tokenizer) rebuildTrimCutset() {
+	var cutset strings.Builder
+
+	for _, w := range whitespaceChars {
+		if t.isSeperatorRune(w) {
+			continue
+		}
+		cutset.WriteRune(w)
+	}
+
+	t.trimCutset = cutset.String()
 }
 
 // isSeperatorRune checks if a rune is a token part separator.
-func (s *Tokenizer) isSeperatorRune(ch rune) bool {
-	for _, r := range s.separators {
+func (t *Tokenizer) isSeperatorRune(ch rune) bool {
+	for _, r := range t.separators {
 		if ch == r {
 			return true
 		}
@@ -196,17 +225,23 @@ func (s *Tokenizer) isSeperatorRune(ch rune) bool {
 	return false
 }
 
-// isWhitespaceRune checks if a rune is a space, tab, or newline.
-func isWhitespaceRune(ch rune) bool {
-	return ch == ' ' || ch == '\t' || ch == '\n'
+// isWhitespaceRune checks if a rune is a space character (eg. space, tab, new line).
+func (t *Tokenizer) isWhitespaceRune(ch rune) bool {
+	for _, c := range whitespaceChars {
+		if c == ch {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isQuoteRune checks if a rune is a quote.
-func isQuoteRune(ch rune) bool {
+func (t *Tokenizer) isQuoteRune(ch rune) bool {
 	return ch == '\'' || ch == '"' || ch == '`'
 }
 
 // isEscapeRune checks if a rune is an escape character.
-func isEscapeRune(ch rune) bool {
+func (t *Tokenizer) isEscapeRune(ch rune) bool {
 	return ch == '\\'
 }

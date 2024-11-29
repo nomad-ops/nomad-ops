@@ -4,33 +4,43 @@ package s3
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
-	"github.com/aws/aws-sdk-go-v2/internal/v4a"
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+// This operation is not supported by directory buckets.
+//
 // Returns metadata about all versions of the objects in a bucket. You can also
 // use request parameters as selection criteria to return metadata about a subset
-// of all the object versions. To use this operation, you must have permission to
-// perform the s3:ListBucketVersions action. Be aware of the name difference. A
-// 200 OK response can contain valid or invalid XML. Make sure to design your
+// of all the object versions.
+//
+// To use this operation, you must have permission to perform the
+// s3:ListBucketVersions action. Be aware of the name difference.
+//
+// A 200 OK response can contain valid or invalid XML. Make sure to design your
 // application to parse the contents of the response and handle it appropriately.
-// To use this operation, you must have READ access to the bucket. This action is
-// not supported by Amazon S3 on Outposts. The following operations are related to
-// ListObjectVersions :
-//   - ListObjectsV2 (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html)
-//   - GetObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
-//   - PutObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)
-//   - DeleteObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html)
+//
+// To use this operation, you must have READ access to the bucket.
+//
+// The following operations are related to ListObjectVersions :
+//
+// [ListObjectsV2]
+//
+// [GetObject]
+//
+// [PutObject]
+//
+// [DeleteObject]
+//
+// [DeleteObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html
+// [PutObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
+// [GetObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
+// [ListObjectsV2]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
 func (c *Client) ListObjectVersions(ctx context.Context, params *ListObjectVersionsInput, optFns ...func(*Options)) (*ListObjectVersionsOutput, error) {
 	if params == nil {
 		params = &ListObjectVersionsInput{}
@@ -60,17 +70,25 @@ type ListObjectVersionsInput struct {
 	// are not returned elsewhere in the response.
 	Delimiter *string
 
-	// Requests Amazon S3 to encode the object keys in the response and specifies the
-	// encoding method to use. An object key can contain any Unicode character;
-	// however, the XML 1.0 parser cannot parse some characters, such as characters
-	// with an ASCII value from 0 to 10. For characters that are not supported in XML
-	// 1.0, you can add this parameter to request that Amazon S3 encode the keys in the
-	// response.
+	// Encoding type used by Amazon S3 to encode the [object keys] in the response. Responses are
+	// encoded only in UTF-8. An object key can contain any Unicode character. However,
+	// the XML 1.0 parser can't parse certain characters, such as characters with an
+	// ASCII value from 0 to 10. For characters that aren't supported in XML 1.0, you
+	// can add this parameter to request that Amazon S3 encode the keys in the
+	// response. For more information about characters to avoid in object key names,
+	// see [Object key naming guidelines].
+	//
+	// When using the URL encoding type, non-ASCII characters that are used in an
+	// object's key name will be percent-encoded according to UTF-8 code values. For
+	// example, the object test_file(3).png will appear as test_file%283%29.png .
+	//
+	// [Object key naming guidelines]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html#object-key-guidelines
+	// [object keys]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html
 	EncodingType types.EncodingType
 
-	// The account ID of the expected bucket owner. If the bucket is owned by a
-	// different account, the request fails with the HTTP status code 403 Forbidden
-	// (access denied).
+	// The account ID of the expected bucket owner. If the account ID that you provide
+	// does not match the actual owner of the bucket, the request fails with the HTTP
+	// status code 403 Forbidden (access denied).
 	ExpectedBucketOwner *string
 
 	// Specifies the key to start with when listing objects in a bucket.
@@ -81,7 +99,7 @@ type ListObjectVersionsInput struct {
 	// will never contain more. If additional keys satisfy the search criteria, but
 	// were not returned because max-keys was exceeded, the response contains true . To
 	// return the additional keys, see key-marker and version-id-marker .
-	MaxKeys int32
+	MaxKeys *int32
 
 	// Specifies the optional fields that you want returned in the response. Fields
 	// that you do not specify are not returned.
@@ -95,16 +113,28 @@ type ListObjectVersionsInput struct {
 	Prefix *string
 
 	// Confirms that the requester knows that they will be charged for the request.
-	// Bucket owners need not specify this parameter in their requests. For information
-	// about downloading objects from Requester Pays buckets, see Downloading Objects
-	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
-	// in the Amazon S3 User Guide.
+	// Bucket owners need not specify this parameter in their requests. If either the
+	// source or destination S3 bucket has Requester Pays enabled, the requester will
+	// pay for corresponding charges to copy the object. For information about
+	// downloading objects from Requester Pays buckets, see [Downloading Objects in Requester Pays Buckets]in the Amazon S3 User
+	// Guide.
+	//
+	// This functionality is not supported for directory buckets.
+	//
+	// [Downloading Objects in Requester Pays Buckets]: https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html
 	RequestPayer types.RequestPayer
 
 	// Specifies the object version you want to start listing from.
 	VersionIdMarker *string
 
 	noSmithyDocumentSerde
+}
+
+func (in *ListObjectVersionsInput) bindEndpointParams(p *EndpointParameters) {
+
+	p.Bucket = in.Bucket
+	p.Prefix = in.Prefix
+
 }
 
 type ListObjectVersionsOutput struct {
@@ -123,10 +153,13 @@ type ListObjectVersionsOutput struct {
 	// max-keys limitation. These keys are not returned elsewhere in the response.
 	Delimiter *string
 
-	// Encoding type used by Amazon S3 to encode object key names in the XML response.
+	//  Encoding type used by Amazon S3 to encode object key names in the XML response.
+	//
 	// If you specify the encoding-type request parameter, Amazon S3 includes this
 	// element in the response, and returns encoded key name values in the following
-	// response elements: KeyMarker, NextKeyMarker, Prefix, Key , and Delimiter .
+	// response elements:
+	//
+	// KeyMarker, NextKeyMarker, Prefix, Key , and Delimiter .
 	EncodingType types.EncodingType
 
 	// A flag that indicates whether Amazon S3 returned all of the results that
@@ -134,13 +167,13 @@ type ListObjectVersionsOutput struct {
 	// follow-up paginated request by using the NextKeyMarker and NextVersionIdMarker
 	// response parameters as a starting place in another request to return the rest of
 	// the results.
-	IsTruncated bool
+	IsTruncated *bool
 
 	// Marks the last key returned in a truncated response.
 	KeyMarker *string
 
 	// Specifies the maximum number of objects to return.
-	MaxKeys int32
+	MaxKeys *int32
 
 	// The bucket name.
 	Name *string
@@ -161,6 +194,8 @@ type ListObjectVersionsOutput struct {
 
 	// If present, indicates that the requester was successfully charged for the
 	// request.
+	//
+	// This functionality is not supported for directory buckets.
 	RequestCharged types.RequestCharged
 
 	// Marks the last version of the key returned in a truncated response.
@@ -176,6 +211,9 @@ type ListObjectVersionsOutput struct {
 }
 
 func (c *Client) addOperationListObjectVersionsMiddlewares(stack *middleware.Stack, options Options) (err error) {
+	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+		return err
+	}
 	err = stack.Serialize.Add(&awsRestxml_serializeOpListObjectVersions{}, middleware.After)
 	if err != nil {
 		return err
@@ -184,34 +222,35 @@ func (c *Client) addOperationListObjectVersionsMiddlewares(stack *middleware.Sta
 	if err != nil {
 		return err
 	}
+	if err := addProtocolFinalizerMiddlewares(stack, options, "ListObjectVersions"); err != nil {
+		return fmt.Errorf("add protocol finalizers: %v", err)
+	}
+
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
 		return err
 	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
+	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
+	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRetry(stack, options); err != nil {
 		return err
 	}
-	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
+	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
 	if err = addClientUserAgent(stack, options); err != nil {
@@ -223,10 +262,19 @@ func (c *Client) addOperationListObjectVersionsMiddlewares(stack *middleware.Sta
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = swapWithCustomHTTPSignerMiddleware(stack, options); err != nil {
+	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addListObjectVersionsResolveEndpointMiddleware(stack, options); err != nil {
+	if err = addPutBucketContextMiddleware(stack); err != nil {
+		return err
+	}
+	if err = addTimeOffsetBuild(stack, c); err != nil {
+		return err
+	}
+	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addIsExpressUserAgent(stack); err != nil {
 		return err
 	}
 	if err = addOpListObjectVersionsValidationMiddleware(stack); err != nil {
@@ -238,7 +286,7 @@ func (c *Client) addOperationListObjectVersionsMiddlewares(stack *middleware.Sta
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addListObjectVersionsUpdateEndpoint(stack, options); err != nil {
@@ -256,7 +304,7 @@ func (c *Client) addOperationListObjectVersionsMiddlewares(stack *middleware.Sta
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addendpointDisableHTTPSMiddleware(stack, options); err != nil {
+	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
@@ -276,7 +324,6 @@ func newServiceMetadataMiddleware_opListObjectVersions(region string) *awsmiddle
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		SigningName:   "s3",
 		OperationName: "ListObjectVersions",
 	}
 }
@@ -305,140 +352,4 @@ func addListObjectVersionsUpdateEndpoint(stack *middleware.Stack, options Option
 		UseARNRegion:                   options.UseARNRegion,
 		DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
 	})
-}
-
-type opListObjectVersionsResolveEndpointMiddleware struct {
-	EndpointResolver EndpointResolverV2
-	BuiltInResolver  builtInParameterResolver
-}
-
-func (*opListObjectVersionsResolveEndpointMiddleware) ID() string {
-	return "ResolveEndpointV2"
-}
-
-func (m *opListObjectVersionsResolveEndpointMiddleware) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
-	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
-) {
-	if awsmiddleware.GetRequiresLegacyEndpoints(ctx) {
-		return next.HandleSerialize(ctx, in)
-	}
-
-	req, ok := in.Request.(*smithyhttp.Request)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	input, ok := in.Parameters.(*ListObjectVersionsInput)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	if m.EndpointResolver == nil {
-		return out, metadata, fmt.Errorf("expected endpoint resolver to not be nil")
-	}
-
-	params := EndpointParameters{}
-
-	m.BuiltInResolver.ResolveBuiltIns(&params)
-
-	params.Bucket = input.Bucket
-
-	var resolvedEndpoint smithyendpoints.Endpoint
-	resolvedEndpoint, err = m.EndpointResolver.ResolveEndpoint(ctx, params)
-	if err != nil {
-		return out, metadata, fmt.Errorf("failed to resolve service endpoint, %w", err)
-	}
-
-	req.URL = &resolvedEndpoint.URI
-
-	for k := range resolvedEndpoint.Headers {
-		req.Header.Set(
-			k,
-			resolvedEndpoint.Headers.Get(k),
-		)
-	}
-
-	authSchemes, err := internalauth.GetAuthenticationSchemes(&resolvedEndpoint.Properties)
-	if err != nil {
-		var nfe *internalauth.NoAuthenticationSchemesFoundError
-		if errors.As(err, &nfe) {
-			// if no auth scheme is found, default to sigv4
-			signingName := "s3"
-			signingRegion := m.BuiltInResolver.(*builtInResolver).Region
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			ctx = s3cust.SetSignerVersion(ctx, internalauth.SigV4)
-		}
-		var ue *internalauth.UnSupportedAuthenticationSchemeSpecifiedError
-		if errors.As(err, &ue) {
-			return out, metadata, fmt.Errorf(
-				"This operation requests signer version(s) %v but the client only supports %v",
-				ue.UnsupportedSchemes,
-				internalauth.SupportedSchemes,
-			)
-		}
-	}
-
-	for _, authScheme := range authSchemes {
-		switch authScheme.(type) {
-		case *internalauth.AuthenticationSchemeV4:
-			v4Scheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4)
-			var signingName, signingRegion string
-			if v4Scheme.SigningName == nil {
-				signingName = "s3"
-			} else {
-				signingName = *v4Scheme.SigningName
-			}
-			if v4Scheme.SigningRegion == nil {
-				signingRegion = m.BuiltInResolver.(*builtInResolver).Region
-			} else {
-				signingRegion = *v4Scheme.SigningRegion
-			}
-			if v4Scheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4Scheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			ctx = s3cust.SetSignerVersion(ctx, v4Scheme.Name)
-			break
-		case *internalauth.AuthenticationSchemeV4A:
-			v4aScheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4A)
-			if v4aScheme.SigningName == nil {
-				v4aScheme.SigningName = aws.String("s3")
-			}
-			if v4aScheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4aScheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, *v4aScheme.SigningName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, v4aScheme.SigningRegionSet[0])
-			ctx = s3cust.SetSignerVersion(ctx, v4a.Version)
-			break
-		case *internalauth.AuthenticationSchemeNone:
-			break
-		}
-	}
-
-	return next.HandleSerialize(ctx, in)
-}
-
-func addListObjectVersionsResolveEndpointMiddleware(stack *middleware.Stack, options Options) error {
-	return stack.Serialize.Insert(&opListObjectVersionsResolveEndpointMiddleware{
-		EndpointResolver: options.EndpointResolverV2,
-		BuiltInResolver: &builtInResolver{
-			Region:                         options.Region,
-			UseFIPS:                        options.EndpointOptions.UseFIPSEndpoint,
-			UseDualStack:                   options.EndpointOptions.UseDualStackEndpoint,
-			Endpoint:                       options.BaseEndpoint,
-			ForcePathStyle:                 options.UsePathStyle,
-			Accelerate:                     options.UseAccelerate,
-			DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
-			UseArnRegion:                   options.UseARNRegion,
-		},
-	}, "ResolveEndpoint", middleware.After)
 }

@@ -121,7 +121,7 @@ func (dao *Dao) FindCollectionReferences(collection *models.Collection, excludeI
 // - is referenced as part of a relation field in another collection
 func (dao *Dao) DeleteCollection(collection *models.Collection) error {
 	if collection.System {
-		return fmt.Errorf("System collection %q cannot be deleted.", collection.Name)
+		return fmt.Errorf("system collection %q cannot be deleted", collection.Name)
 	}
 
 	// ensure that there aren't any existing references.
@@ -135,7 +135,7 @@ func (dao *Dao) DeleteCollection(collection *models.Collection) error {
 		for ref := range result {
 			names = append(names, ref.Name)
 		}
-		return fmt.Errorf("The collection %q has external relation field references (%s).", collection.Name, strings.Join(names, ", "))
+		return fmt.Errorf("the collection %q has external relation field references (%s)", collection.Name, strings.Join(names, ", "))
 	}
 
 	return dao.RunInTransaction(func(txDao *Dao) error {
@@ -152,7 +152,7 @@ func (dao *Dao) DeleteCollection(collection *models.Collection) error {
 
 		// trigger views resave to check for dependencies
 		if err := txDao.resaveViewsWithChangedSchema(collection.Id); err != nil {
-			return fmt.Errorf("The collection has a view dependency - %w", err)
+			return fmt.Errorf("the collection has a view dependency - %w", err)
 		}
 
 		return txDao.Delete(collection)
@@ -162,8 +162,8 @@ func (dao *Dao) DeleteCollection(collection *models.Collection) error {
 // SaveCollection persists the provided Collection model and updates
 // its related records table schema.
 //
-// If collecction.IsNew() is true, the method will perform a create, otherwise an update.
-// To explicitly mark a collection for update you can use collecction.MarkAsNotNew().
+// If collection.IsNew() is true, the method will perform a create, otherwise an update.
+// To explicitly mark a collection for update you can use collection.MarkAsNotNew().
 func (dao *Dao) SaveCollection(collection *models.Collection) error {
 	var oldCollection *models.Collection
 
@@ -227,7 +227,7 @@ func (dao *Dao) ImportCollections(
 	afterSync func(txDao *Dao, mappedImported, mappedExisting map[string]*models.Collection) error,
 ) error {
 	if len(importedCollections) == 0 {
-		return errors.New("No collections to import")
+		return errors.New("no collections to import")
 	}
 
 	return dao.RunInTransaction(func(txDao *Dao) error {
@@ -263,11 +263,11 @@ func (dao *Dao) ImportCollections(
 
 				// extend existing schema
 				if !deleteMissing {
-					schema, _ := existing.Schema.Clone()
+					schemaClone, _ := existing.Schema.Clone()
 					for _, f := range imported.Schema.Fields() {
-						schema.AddField(f) // add or replace
+						schemaClone.AddField(f) // add or replace
 					}
-					imported.Schema = *schema
+					imported.Schema = *schemaClone
 				}
 			} else {
 				imported.MarkAsNew()
@@ -285,7 +285,7 @@ func (dao *Dao) ImportCollections(
 				}
 
 				if existing.System {
-					return fmt.Errorf("System collection %q cannot be deleted.", existing.Name)
+					return fmt.Errorf("system collection %q cannot be deleted", existing.Name)
 				}
 
 				// delete the related records table or view
@@ -402,6 +402,8 @@ func (dao *Dao) saveViewCollection(newCollection, oldCollection *models.Collecti
 // currently we don't support non-string model ids
 // (see https://github.com/pocketbase/pocketbase/issues/3110).
 func (dao *Dao) normalizeViewQueryId(query string) (string, error) {
+	query = strings.Trim(strings.TrimSpace(query), ";")
+
 	parsed, err := dao.parseQueryToFields(query)
 	if err != nil {
 		return "", err

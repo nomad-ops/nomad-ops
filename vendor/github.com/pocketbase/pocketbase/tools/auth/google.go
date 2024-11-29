@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 )
 
@@ -20,7 +21,9 @@ type Google struct {
 // NewGoogleProvider creates new Google provider instance with some defaults.
 func NewGoogleProvider() *Google {
 	return &Google{&baseProvider{
-		ctx: context.Background(),
+		ctx:         context.Background(),
+		displayName: "Google",
+		pkce:        true,
 		scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.profile",
 			"https://www.googleapis.com/auth/userinfo.email",
@@ -62,6 +65,8 @@ func (p *Google) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	if extracted.VerifiedEmail {
 		user.Email = extracted.Email

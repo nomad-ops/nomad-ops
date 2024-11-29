@@ -22,12 +22,14 @@ type job struct {
 
 // Cron is a crontab-like struct for tasks/jobs scheduling.
 type Cron struct {
-	sync.RWMutex
+	timezone   *time.Location
+	ticker     *time.Ticker
+	startTimer *time.Timer
+	jobs       map[string]*job
+	interval   time.Duration
+	tickerDone chan bool
 
-	interval time.Duration
-	timezone *time.Location
-	ticker   *time.Ticker
-	jobs     map[string]*job
+	sync.RWMutex
 }
 
 // New create a new Cron struct with default tick interval of 1 minute
@@ -37,9 +39,10 @@ type Cron struct {
 // You can change the default timezone with Cron.SetTimezone().
 func New() *Cron {
 	return &Cron{
-		interval: 1 * time.Minute,
-		timezone: time.UTC,
-		jobs:     map[string]*job{},
+		interval:   1 * time.Minute,
+		timezone:   time.UTC,
+		jobs:       map[string]*job{},
+		tickerDone: make(chan bool),
 	}
 }
 
@@ -132,10 +135,16 @@ func (c *Cron) Stop() {
 	c.Lock()
 	defer c.Unlock()
 
+	if c.startTimer != nil {
+		c.startTimer.Stop()
+		c.startTimer = nil
+	}
+
 	if c.ticker == nil {
 		return // already stopped
 	}
 
+	c.tickerDone <- true
 	c.ticker.Stop()
 	c.ticker = nil
 }
@@ -146,15 +155,33 @@ func (c *Cron) Stop() {
 func (c *Cron) Start() {
 	c.Stop()
 
-	c.Lock()
-	c.ticker = time.NewTicker(c.interval)
-	c.Unlock()
+	// delay the ticker to start at 00 of 1 c.interval duration
+	now := time.Now()
+	next := now.Add(c.interval).Truncate(c.interval)
+	delay := next.Sub(now)
 
-	go func() {
-		for t := range c.ticker.C {
-			c.runDue(t)
-		}
-	}()
+	c.Lock()
+	c.startTimer = time.AfterFunc(delay, func() {
+		c.Lock()
+		c.ticker = time.NewTicker(c.interval)
+		c.Unlock()
+
+		// run immediately at 00
+		c.runDue(time.Now())
+
+		// run after each tick
+		go func() {
+			for {
+				select {
+				case <-c.tickerDone:
+					return
+				case t := <-c.ticker.C:
+					c.runDue(t)
+				}
+			}
+		}()
+	})
+	c.Unlock()
 }
 
 // HasStarted checks whether the current Cron ticker has been started.

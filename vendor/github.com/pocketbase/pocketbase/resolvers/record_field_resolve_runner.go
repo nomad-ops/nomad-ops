@@ -3,17 +3,22 @@ package resolvers
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
+	"github.com/pocketbase/pocketbase/tools/dbutils"
 	"github.com/pocketbase/pocketbase/tools/inflector"
 	"github.com/pocketbase/pocketbase/tools/list"
 	"github.com/pocketbase/pocketbase/tools/search"
 	"github.com/pocketbase/pocketbase/tools/security"
 )
+
+// maxNestedRels defines the max allowed nested relations depth.
+const maxNestedRels = 6
 
 // parseAndRun starts a new one-off RecordFieldResolver.Resolve execution.
 func parseAndRun(fieldName string, resolver *RecordFieldResolver) (*search.ResolverResult, error) {
@@ -90,9 +95,9 @@ func (r *runner) run() (*search.ResolverResult, error) {
 				return r.processRequestInfoRelationField(dataField)
 			}
 
-			// check for select:each field
-			if modifier == eachModifier && dataField.Type == schema.FieldTypeSelect && len(r.activeProps) == 3 {
-				return r.processRequestInfoSelectEachModifier(dataField)
+			// check for data arrayble fields ":each" modifier
+			if modifier == eachModifier && list.ExistInSlice(dataField.Type, schema.ArraybleFieldTypes()) && len(r.activeProps) == 3 {
+				return r.processRequestInfoEachModifier(dataField)
 			}
 
 			// check for data arrayble fields ":length" modifier
@@ -141,13 +146,21 @@ func (r *runner) processCollectionField() (*search.ResolverResult, error) {
 		return nil, fmt.Errorf("invalid @collection field path in %q", r.fieldName)
 	}
 
-	collection, err := r.resolver.loadCollection(r.activeProps[1])
+	// nameOrId or nameOrId:alias
+	collectionParts := strings.SplitN(r.activeProps[1], ":", 2)
+
+	collection, err := r.resolver.loadCollection(collectionParts[0])
 	if err != nil {
 		return nil, fmt.Errorf("failed to load collection %q from field path %q", r.activeProps[1], r.fieldName)
 	}
 
 	r.activeCollectionName = collection.Name
-	r.activeTableAlias = inflector.Columnify("__collection_" + r.activeCollectionName)
+
+	if len(collectionParts) == 2 && collectionParts[1] != "" {
+		r.activeTableAlias = inflector.Columnify("__collection_alias_" + collectionParts[1])
+	} else {
+		r.activeTableAlias = inflector.Columnify("__collection_" + r.activeCollectionName)
+	}
 
 	r.withMultiMatch = true
 
@@ -227,22 +240,22 @@ func (r *runner) processRequestInfoLengthModifier(dataField *schema.SchemaField)
 	return result, nil
 }
 
-func (r *runner) processRequestInfoSelectEachModifier(dataField *schema.SchemaField) (*search.ResolverResult, error) {
-	options, ok := dataField.Options.(*schema.SelectOptions)
+func (r *runner) processRequestInfoEachModifier(dataField *schema.SchemaField) (*search.ResolverResult, error) {
+	options, ok := dataField.Options.(schema.MultiValuer)
 	if !ok {
-		return nil, fmt.Errorf("failed to initialize field %q options", dataField.Name)
+		return nil, fmt.Errorf("field %q options are not initialized or doesn't support multivaluer operations", dataField.Name)
 	}
 
 	dataItems := list.ToUniqueStringSlice(r.resolver.requestInfo.Data[dataField.Name])
 	rawJson, err := json.Marshal(dataItems)
 	if err != nil {
-		return nil, fmt.Errorf("cannot marshalize the data select item for field %q", r.activeProps[2])
+		return nil, fmt.Errorf("cannot serialize the data for field %q", r.activeProps[2])
 	}
 
-	placeholder := "dataSelect" + security.PseudorandomString(4)
+	placeholder := "dataEach" + security.PseudorandomString(4)
 	cleanFieldName := inflector.Columnify(dataField.Name)
 	jeTable := fmt.Sprintf("json_each({:%s})", placeholder)
-	jeAlias := "__dataSelect_" + cleanFieldName + "_je"
+	jeAlias := "__dataEach_" + cleanFieldName + "_je"
 	r.resolver.registerJoin(jeTable, jeAlias, nil)
 
 	result := &search.ResolverResult{
@@ -250,7 +263,7 @@ func (r *runner) processRequestInfoSelectEachModifier(dataField *schema.SchemaFi
 		Params:     dbx.Params{placeholder: rawJson},
 	}
 
-	if options.MaxSelect != 1 {
+	if options.IsMultiple() {
 		r.withMultiMatch = true
 	}
 
@@ -292,30 +305,33 @@ func (r *runner) processRequestInfoRelationField(dataField *schema.SchemaField) 
 	}
 
 	r.activeCollectionName = dataRelCollection.Name
-	r.activeTableAlias = inflector.Columnify("__data_" + dataRelCollection.Name)
+	r.activeTableAlias = inflector.Columnify("__data_" + dataRelCollection.Name + "_" + dataField.Name)
 
 	// join the data rel collection to the main collection
 	r.resolver.registerJoin(
-		inflector.Columnify(r.activeCollectionName),
+		r.activeCollectionName,
 		r.activeTableAlias,
 		dbx.In(
-			fmt.Sprintf("[[%s.id]]", inflector.Columnify(r.activeTableAlias)),
+			fmt.Sprintf("[[%s.id]]", r.activeTableAlias),
 			list.ToInterfaceSlice(dataRelIds)...,
 		),
 	)
 
-	if options.MaxSelect == nil || *options.MaxSelect != 1 {
+	if options.IsMultiple() {
 		r.withMultiMatch = true
 	}
 
 	// join the data rel collection to the multi-match subquery
-	r.multiMatchActiveTableAlias = inflector.Columnify("__data_mm_" + dataRelCollection.Name)
+	r.multiMatchActiveTableAlias = inflector.Columnify("__data_mm_" + dataRelCollection.Name + "_" + dataField.Name)
 	r.multiMatch.joins = append(
 		r.multiMatch.joins,
 		&join{
-			tableName:  inflector.Columnify(r.activeCollectionName),
+			tableName:  r.activeCollectionName,
 			tableAlias: r.multiMatchActiveTableAlias,
-			on:         dbx.In(r.multiMatchActiveTableAlias+".id", list.ToInterfaceSlice(dataRelIds)...),
+			on: dbx.In(
+				fmt.Sprintf("[[%s.id]]", r.multiMatchActiveTableAlias),
+				list.ToInterfaceSlice(dataRelIds)...,
+			),
 		},
 	)
 
@@ -325,6 +341,8 @@ func (r *runner) processRequestInfoRelationField(dataField *schema.SchemaField) 
 
 	return r.processActiveProps()
 }
+
+var viaRegex = regexp.MustCompile(`^(\w+)_via_(\w+)$`)
 
 func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 	totalProps := len(r.activeProps)
@@ -379,42 +397,41 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 
 			cleanFieldName := inflector.Columnify(field.Name)
 
-			// arrayble fields ":length" modifier
+			// arrayable fields with ":length" modifier
 			// -------------------------------------------------------
 			if modifier == lengthModifier && list.ExistInSlice(field.Type, schema.ArraybleFieldTypes()) {
 				jePair := r.activeTableAlias + "." + cleanFieldName
 
 				result := &search.ResolverResult{
-					Identifier: jsonArrayLength(jePair),
+					Identifier: dbutils.JsonArrayLength(jePair),
 				}
 
 				if r.withMultiMatch {
 					jePair2 := r.multiMatchActiveTableAlias + "." + cleanFieldName
-					r.multiMatch.valueIdentifier = jsonArrayLength(jePair2)
+					r.multiMatch.valueIdentifier = dbutils.JsonArrayLength(jePair2)
 					result.MultiMatchSubQuery = r.multiMatch
 				}
 
 				return result, nil
 			}
 
-			// select field with ":each" modifier
+			// arrayable fields with ":each" modifier
 			// -------------------------------------------------------
-			if field.Type == schema.FieldTypeSelect && modifier == eachModifier {
+			if modifier == eachModifier && list.ExistInSlice(field.Type, schema.ArraybleFieldTypes()) {
 				jePair := r.activeTableAlias + "." + cleanFieldName
 				jeAlias := r.activeTableAlias + "_" + cleanFieldName + "_je"
-				r.resolver.registerJoin(jsonEach(jePair), jeAlias, nil)
+				r.resolver.registerJoin(dbutils.JsonEach(jePair), jeAlias, nil)
 
 				result := &search.ResolverResult{
 					Identifier: fmt.Sprintf("[[%s.value]]", jeAlias),
 				}
 
-				field.InitOptions()
-				options, ok := field.Options.(*schema.SelectOptions)
+				options, ok := field.Options.(schema.MultiValuer)
 				if !ok {
-					return nil, fmt.Errorf("failed to initialize field %q options", prop)
+					return nil, fmt.Errorf("field %q options are not initialized or doesn't multivaluer arrayable operations", prop)
 				}
 
-				if options.MaxSelect != 1 {
+				if options.IsMultiple() {
 					r.withMultiMatch = true
 				}
 
@@ -423,7 +440,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 					jeAlias2 := r.multiMatchActiveTableAlias + "_" + cleanFieldName + "_je"
 
 					r.multiMatch.joins = append(r.multiMatch.joins, &join{
-						tableName:  jsonEach(jePair2),
+						tableName:  dbutils.JsonEach(jePair2),
 						tableAlias: jeAlias2,
 					})
 					r.multiMatch.valueIdentifier = fmt.Sprintf("[[%s.value]]", jeAlias2)
@@ -445,55 +462,176 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 				result.MultiMatchSubQuery = r.multiMatch
 			}
 
+			// wrap in json_extract to ensure that top-level primitives
+			// stored as json work correctly when compared to their SQL equivalent
+			// (https://github.com/pocketbase/pocketbase/issues/4068)
+			if field.Type == schema.FieldTypeJson {
+				result.NoCoalesce = true
+				result.Identifier = dbutils.JsonExtract(r.activeTableAlias+"."+cleanFieldName, "")
+				if r.withMultiMatch {
+					r.multiMatch.valueIdentifier = dbutils.JsonExtract(r.multiMatchActiveTableAlias+"."+cleanFieldName, "")
+				}
+			}
+
 			return result, nil
 		}
 
 		field := collection.Schema.GetFieldByName(prop)
-		if field == nil {
-			if r.nullifyMisingField {
-				return &search.ResolverResult{Identifier: "NULL"}, nil
-			}
-			return nil, fmt.Errorf("unknown field %q", prop)
-		}
 
-		// check if it is a json field
-		if field.Type == schema.FieldTypeJson {
+		// json field -> treat the rest of the props as json path
+		if field != nil && field.Type == schema.FieldTypeJson {
 			var jsonPath strings.Builder
-			jsonPath.WriteString("$")
-			for _, p := range r.activeProps[i+1:] {
+			for j, p := range r.activeProps[i+1:] {
 				if _, err := strconv.Atoi(p); err == nil {
 					jsonPath.WriteString("[")
 					jsonPath.WriteString(inflector.Columnify(p))
 					jsonPath.WriteString("]")
 				} else {
-					jsonPath.WriteString(".")
+					if j > 0 {
+						jsonPath.WriteString(".")
+					}
 					jsonPath.WriteString(inflector.Columnify(p))
 				}
 			}
+			jsonPathStr := jsonPath.String()
 
 			result := &search.ResolverResult{
-				Identifier: fmt.Sprintf(
-					"JSON_EXTRACT([[%s.%s]], '%s')",
-					r.activeTableAlias,
-					inflector.Columnify(prop),
-					jsonPath.String(),
-				),
+				NoCoalesce: true,
+				Identifier: dbutils.JsonExtract(r.activeTableAlias+"."+inflector.Columnify(prop), jsonPathStr),
 			}
 
 			if r.withMultiMatch {
-				r.multiMatch.valueIdentifier = fmt.Sprintf(
-					"JSON_EXTRACT([[%s.%s]], '%s')",
-					r.multiMatchActiveTableAlias,
-					inflector.Columnify(prop),
-					jsonPath.String(),
-				)
+				r.multiMatch.valueIdentifier = dbutils.JsonExtract(r.multiMatchActiveTableAlias+"."+inflector.Columnify(prop), jsonPathStr)
 				result.MultiMatchSubQuery = r.multiMatch
 			}
 
 			return result, nil
 		}
 
-		// check if it is a relation field
+		if i >= maxNestedRels {
+			return nil, fmt.Errorf("max nested relations reached for field %q", prop)
+		}
+
+		// check for back relation (eg. yourCollection_via_yourRelField)
+		// -----------------------------------------------------------
+		if field == nil {
+			parts := viaRegex.FindStringSubmatch(prop)
+			if len(parts) != 3 {
+				if r.nullifyMisingField {
+					return &search.ResolverResult{Identifier: "NULL"}, nil
+				}
+				return nil, fmt.Errorf("failed to resolve field %q", prop)
+			}
+
+			backCollection, err := r.resolver.loadCollection(parts[1])
+			if err != nil {
+				if r.nullifyMisingField {
+					return &search.ResolverResult{Identifier: "NULL"}, nil
+				}
+				return nil, fmt.Errorf("failed to load back relation field %q collection", prop)
+			}
+
+			backField := backCollection.Schema.GetFieldByName(parts[2])
+			if backField == nil {
+				if r.nullifyMisingField {
+					return &search.ResolverResult{Identifier: "NULL"}, nil
+				}
+				return nil, fmt.Errorf("missing back relation field %q", parts[2])
+			}
+			if backField.Type != schema.FieldTypeRelation {
+				return nil, fmt.Errorf("invalid back relation field %q", parts[2])
+			}
+
+			backField.InitOptions()
+			backFieldOptions, ok := backField.Options.(*schema.RelationOptions)
+			if !ok {
+				return nil, fmt.Errorf("failed to initialize back relation field %q options", backField.Name)
+			}
+			if backFieldOptions.CollectionId != collection.Id {
+				return nil, fmt.Errorf("invalid back relation field %q collection reference", backField.Name)
+			}
+
+			// join the back relation to the main query
+			// ---
+			cleanProp := inflector.Columnify(prop)
+			cleanBackFieldName := inflector.Columnify(backField.Name)
+			newTableAlias := r.activeTableAlias + "_" + cleanProp
+			newCollectionName := inflector.Columnify(backCollection.Name)
+
+			isBackRelMultiple := backFieldOptions.IsMultiple()
+			if !isBackRelMultiple {
+				// additionally check if the rel field has a single column unique index
+				isBackRelMultiple = !dbutils.HasSingleColumnUniqueIndex(backField.Name, backCollection.Indexes)
+			}
+
+			if !isBackRelMultiple {
+				r.resolver.registerJoin(
+					newCollectionName,
+					newTableAlias,
+					dbx.NewExp(fmt.Sprintf("[[%s.%s]] = [[%s.id]]", newTableAlias, cleanBackFieldName, r.activeTableAlias)),
+				)
+			} else {
+				jeAlias := r.activeTableAlias + "_" + cleanProp + "_je"
+				r.resolver.registerJoin(
+					newCollectionName,
+					newTableAlias,
+					dbx.NewExp(fmt.Sprintf(
+						"[[%s.id]] IN (SELECT [[%s.value]] FROM %s {{%s}})",
+						r.activeTableAlias,
+						jeAlias,
+						dbutils.JsonEach(newTableAlias+"."+cleanBackFieldName),
+						jeAlias,
+					)),
+				)
+			}
+
+			r.activeCollectionName = newCollectionName
+			r.activeTableAlias = newTableAlias
+			// ---
+
+			// join the back relation to the multi-match subquery
+			// ---
+			if isBackRelMultiple {
+				r.withMultiMatch = true // enable multimatch if not already
+			}
+
+			newTableAlias2 := r.multiMatchActiveTableAlias + "_" + cleanProp
+
+			if !isBackRelMultiple {
+				r.multiMatch.joins = append(
+					r.multiMatch.joins,
+					&join{
+						tableName:  newCollectionName,
+						tableAlias: newTableAlias2,
+						on:         dbx.NewExp(fmt.Sprintf("[[%s.%s]] = [[%s.id]]", newTableAlias2, cleanBackFieldName, r.multiMatchActiveTableAlias)),
+					},
+				)
+			} else {
+				jeAlias2 := r.multiMatchActiveTableAlias + "_" + cleanProp + "_je"
+				r.multiMatch.joins = append(
+					r.multiMatch.joins,
+					&join{
+						tableName:  newCollectionName,
+						tableAlias: newTableAlias2,
+						on: dbx.NewExp(fmt.Sprintf(
+							"[[%s.id]] IN (SELECT [[%s.value]] FROM %s {{%s}})",
+							r.multiMatchActiveTableAlias,
+							jeAlias2,
+							dbutils.JsonEach(newTableAlias2+"."+cleanBackFieldName),
+							jeAlias2,
+						)),
+					},
+				)
+			}
+
+			r.multiMatchActiveTableAlias = newTableAlias2
+			// ---
+
+			continue
+		}
+		// -----------------------------------------------------------
+
+		// check for direct relation
 		if field.Type != schema.FieldTypeRelation {
 			return nil, fmt.Errorf("field %q is not a valid relation", prop)
 		}
@@ -508,7 +646,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 
 		relCollection, relErr := r.resolver.loadCollection(options.CollectionId)
 		if relErr != nil {
-			return nil, fmt.Errorf("failed to find field %q collection", prop)
+			return nil, fmt.Errorf("failed to load field %q collection", prop)
 		}
 
 		cleanFieldName := inflector.Columnify(field.Name)
@@ -524,7 +662,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 			)
 		} else {
 			jeAlias := r.activeTableAlias + "_" + cleanFieldName + "_je"
-			r.resolver.registerJoin(jsonEach(prefixedFieldName), jeAlias, nil)
+			r.resolver.registerJoin(dbutils.JsonEach(prefixedFieldName), jeAlias, nil)
 			r.resolver.registerJoin(
 				inflector.Columnify(newCollectionName),
 				newTableAlias,
@@ -539,7 +677,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 		// join the relation to the multi-match subquery
 		// ---
 		if options.IsMultiple() {
-			r.withMultiMatch = true
+			r.withMultiMatch = true // enable multimatch if not already
 		}
 
 		newTableAlias2 := r.multiMatchActiveTableAlias + "_" + cleanFieldName
@@ -559,7 +697,7 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 			r.multiMatch.joins = append(
 				r.multiMatch.joins,
 				&join{
-					tableName:  jsonEach(prefixedFieldName2),
+					tableName:  dbutils.JsonEach(prefixedFieldName2),
 					tableAlias: jeAlias2,
 				},
 				&join{
@@ -575,22 +713,6 @@ func (r *runner) processActiveProps() (*search.ResolverResult, error) {
 	}
 
 	return nil, fmt.Errorf("failed to resolve field %q", r.fieldName)
-}
-
-func jsonArrayLength(tableColumnPair string) string {
-	return fmt.Sprintf(
-		// note: the case is used to normalize value access for single and multiple relations.
-		`json_array_length(CASE WHEN json_valid([[%s]]) THEN [[%s]] ELSE (CASE WHEN [[%s]] = '' OR [[%s]] IS NULL THEN json_array() ELSE json_array([[%s]]) END) END)`,
-		tableColumnPair, tableColumnPair, tableColumnPair, tableColumnPair, tableColumnPair,
-	)
-}
-
-func jsonEach(tableColumnPair string) string {
-	return fmt.Sprintf(
-		// note: the case is used to normalize value access for single and multiple relations.
-		`json_each(CASE WHEN json_valid([[%s]]) THEN [[%s]] ELSE json_array([[%s]]) END)`,
-		tableColumnPair, tableColumnPair, tableColumnPair,
-	)
 }
 
 func resolvableSystemFieldNames(collection *models.Collection) []string {

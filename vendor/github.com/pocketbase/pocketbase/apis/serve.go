@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -52,11 +53,11 @@ type ServeConfig struct {
 //
 // Example:
 //
-// 	app.Bootstrap()
-// 	apis.Serve(app, apis.ServeConfig{
-// 		HttpAddr:        "127.0.0.1:8080",
-// 		ShowStartBanner: false,
-// 	})
+//	app.Bootstrap()
+//	apis.Serve(app, apis.ServeConfig{
+//		HttpAddr:        "127.0.0.1:8080",
+//		ShowStartBanner: false,
+//	})
 func Serve(app core.App, config ServeConfig) (*http.Server, error) {
 	if len(config.AllowedOrigins) == 0 {
 		config.AllowedOrigins = []string{"*"}
@@ -139,6 +140,11 @@ func Serve(app core.App, config ServeConfig) (*http.Server, error) {
 		HostPolicy: autocert.HostWhitelist(hostNames...),
 	}
 
+	// base request context used for cancelling long running requests
+	// like the SSE connections
+	baseCtx, cancelBaseCtx := context.WithCancel(context.Background())
+	defer cancelBaseCtx()
+
 	server := &http.Server{
 		TLSConfig: &tls.Config{
 			MinVersion:     tls.VersionTLS12,
@@ -150,6 +156,10 @@ func Serve(app core.App, config ServeConfig) (*http.Server, error) {
 		// WriteTimeout: 60 * time.Second, // breaks sse!
 		Handler: router,
 		Addr:    mainAddr,
+		BaseContext: func(l net.Listener) context.Context {
+			return baseCtx
+		},
+		ErrorLog: log.New(&serverErrorLogWriter{app: app}, "", 0),
 	}
 
 	serveEvent := &core.ServeEvent{
@@ -189,13 +199,38 @@ func Serve(app core.App, config ServeConfig) (*http.Server, error) {
 		regular.Printf("└─ Admin UI: %s\n", color.CyanString("%s://%s/_/", schema, addr))
 	}
 
+	// WaitGroup to block until server.ShutDown() returns because Serve and similar methods exit immediately.
+	// Note that the WaitGroup would not do anything if the app.OnTerminate() hook isn't triggered.
+	var wg sync.WaitGroup
+
 	// try to gracefully shutdown the server on app termination
 	app.OnTerminate().Add(func(e *core.TerminateEvent) error {
+		cancelBaseCtx()
+
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
+
+		wg.Add(1)
 		server.Shutdown(ctx)
+		if e.IsRestart {
+			// wait for execve and other handlers up to 5 seconds before exit
+			time.AfterFunc(5*time.Second, func() {
+				wg.Done()
+			})
+		} else {
+			wg.Done()
+		}
+
 		return nil
 	})
+
+	// wait for the graceful shutdown to complete before exit
+	defer wg.Wait()
+
+	// ---
+	// @todo consider removing the server return value because it is
+	// not really useful when combined with the blocking serve calls
+	// ---
 
 	// start HTTPS server
 	if config.HttpsAddr != "" {
@@ -240,4 +275,14 @@ func runMigrations(app core.App) error {
 	}
 
 	return nil
+}
+
+type serverErrorLogWriter struct {
+	app core.App
+}
+
+func (s *serverErrorLogWriter) Write(p []byte) (int, error) {
+	s.app.Logger().Debug(strings.TrimSpace(string(p)))
+
+	return len(p), nil
 }

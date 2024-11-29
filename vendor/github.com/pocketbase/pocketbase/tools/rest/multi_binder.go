@@ -6,17 +6,48 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v5"
-	"github.com/spf13/cast"
 )
+
+// MultipartJsonKey is the key for the special multipart/form-data
+// handling allowing reading serialized json payload without normalization.
+const MultipartJsonKey string = "@jsonPayload"
+
+// MultiBinder is similar to [echo.DefaultBinder] but uses slightly different
+// application/json and multipart/form-data bind methods to accommodate better
+// the PocketBase router needs.
+type MultiBinder struct{}
+
+// Bind implements the [Binder.Bind] method.
+//
+// Bind is almost identical to [echo.DefaultBinder.Bind] but uses the
+// [rest.BindBody] function for binding the request body.
+func (b *MultiBinder) Bind(c echo.Context, i interface{}) (err error) {
+	if err := echo.BindPathParams(c, i); err != nil {
+		return err
+	}
+
+	// Only bind query parameters for GET/DELETE/HEAD to avoid unexpected behavior with destination struct binding from body.
+	// For example a request URL `&id=1&lang=en` with body `{"id":100,"lang":"de"}` would lead to precedence issues.
+	method := c.Request().Method
+	if method == http.MethodGet || method == http.MethodDelete || method == http.MethodHead {
+		if err = echo.BindQueryParams(c, i); err != nil {
+			return err
+		}
+	}
+
+	return BindBody(c, i)
+}
 
 // BindBody binds request body content to i.
 //
 // This is similar to `echo.BindBody()`, but for JSON requests uses
 // custom json reader that **copies** the request body, allowing multiple reads.
-func BindBody(c echo.Context, i interface{}) error {
+func BindBody(c echo.Context, i any) error {
 	req := c.Request()
 	if req.ContentLength == 0 {
 		return nil
@@ -40,11 +71,11 @@ func BindBody(c echo.Context, i interface{}) error {
 
 // CopyJsonBody reads the request body into i by
 // creating a copy of `r.Body` to allow multiple reads.
-func CopyJsonBody(r *http.Request, i interface{}) error {
+func CopyJsonBody(r *http.Request, i any) error {
 	body := r.Body
 
-	// this usually shouldn't be needed because the Server calls close for us
-	// but we are changing the request body with a new reader
+	// this usually shouldn't be needed because the Server calls close
+	// for us but we are changing the request body with a new reader
 	defer body.Close()
 
 	limitReader := io.LimitReader(body, DefaultMaxMemory)
@@ -62,11 +93,9 @@ func CopyJsonBody(r *http.Request, i interface{}) error {
 	return err
 }
 
-// This is temp hotfix for properly binding multipart/form-data array values
-// when a map destination is used.
-//
-// It should be replaced with echo.BindBody(c, i) once the issue is fixed in echo.
-func bindFormData(c echo.Context, i interface{}) error {
+// Custom multipart/form-data binder that implements an additional handling like
+// loading a serialized json payload or properly scan array values when a map destination is used.
+func bindFormData(c echo.Context, i any) error {
 	if i == nil {
 		return nil
 	}
@@ -80,6 +109,13 @@ func bindFormData(c echo.Context, i interface{}) error {
 		return nil
 	}
 
+	// special case to allow submitting json without normalization
+	// alongside the other multipart/form-data values
+	jsonPayloadValues := values[MultipartJsonKey]
+	for _, payload := range jsonPayloadValues {
+		json.Unmarshal([]byte(payload), i)
+	}
+
 	rt := reflect.TypeOf(i).Elem()
 
 	// map
@@ -87,6 +123,10 @@ func bindFormData(c echo.Context, i interface{}) error {
 		rv := reflect.ValueOf(i).Elem()
 
 		for k, v := range values {
+			if k == MultipartJsonKey {
+				continue
+			}
+
 			if total := len(v); total == 1 {
 				rv.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(normalizeMultipartValue(v[0])))
 			} else {
@@ -105,12 +145,16 @@ func bindFormData(c echo.Context, i interface{}) error {
 	return echo.BindBody(c, i)
 }
 
+var inferNumberCharsRegex = regexp.MustCompile(`^[\-\.\d]+$`)
+
 // In order to support more seamlessly both json and multipart/form-data requests,
 // the following normalization rules are applied for plain multipart string values:
-// - "true" is converted to the json `true`
-// - "false" is converted to the json `false`
-// - numeric (non-scientific) strings are converted to json number
-// - any other string (empty string too) is left as it is
+//   - "true" is converted to the json "true"
+//   - "false" is converted to the json "false"
+//   - numeric strings are converted to json number ONLY if the resulted
+//     minimal number string representation is the same as the provided raw string
+//     (aka. scientific notations, "Infinity", "0.0", "0001", etc. are kept as string)
+//   - any other string (empty string too) is left as it is
 func normalizeMultipartValue(raw string) any {
 	switch raw {
 	case "":
@@ -120,8 +164,12 @@ func normalizeMultipartValue(raw string) any {
 	case "false":
 		return false
 	default:
-		if raw[0] == '-' || (raw[0] >= '0' && raw[0] <= '9') {
-			if v, err := cast.ToFloat64E(raw); err == nil {
+		// try to convert to number
+		//
+		// note: expects the provided raw string to match exactly with the minimal string representation of the parsed float
+		if raw[0] == '-' || (raw[0] >= '0' && raw[0] <= '9') && inferNumberCharsRegex.Match([]byte(raw)) {
+			v, err := strconv.ParseFloat(raw, 64)
+			if err == nil && strconv.FormatFloat(v, 'f', -1, 64) == raw {
 				return v
 			}
 		}

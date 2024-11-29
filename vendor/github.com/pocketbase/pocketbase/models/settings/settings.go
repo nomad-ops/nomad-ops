@@ -42,27 +42,31 @@ type Settings struct {
 	// Deprecated: Will be removed in v0.9+
 	EmailAuth EmailAuthConfig `form:"emailAuth" json:"emailAuth"`
 
-	GoogleAuth    AuthProviderConfig `form:"googleAuth" json:"googleAuth"`
-	FacebookAuth  AuthProviderConfig `form:"facebookAuth" json:"facebookAuth"`
-	GithubAuth    AuthProviderConfig `form:"githubAuth" json:"githubAuth"`
-	GitlabAuth    AuthProviderConfig `form:"gitlabAuth" json:"gitlabAuth"`
-	DiscordAuth   AuthProviderConfig `form:"discordAuth" json:"discordAuth"`
-	TwitterAuth   AuthProviderConfig `form:"twitterAuth" json:"twitterAuth"`
-	MicrosoftAuth AuthProviderConfig `form:"microsoftAuth" json:"microsoftAuth"`
-	SpotifyAuth   AuthProviderConfig `form:"spotifyAuth" json:"spotifyAuth"`
-	KakaoAuth     AuthProviderConfig `form:"kakaoAuth" json:"kakaoAuth"`
-	TwitchAuth    AuthProviderConfig `form:"twitchAuth" json:"twitchAuth"`
-	StravaAuth    AuthProviderConfig `form:"stravaAuth" json:"stravaAuth"`
-	GiteeAuth     AuthProviderConfig `form:"giteeAuth" json:"giteeAuth"`
-	LivechatAuth  AuthProviderConfig `form:"livechatAuth" json:"livechatAuth"`
-	GiteaAuth     AuthProviderConfig `form:"giteaAuth" json:"giteaAuth"`
-	OIDCAuth      AuthProviderConfig `form:"oidcAuth" json:"oidcAuth"`
-	OIDC2Auth     AuthProviderConfig `form:"oidc2Auth" json:"oidc2Auth"`
-	OIDC3Auth     AuthProviderConfig `form:"oidc3Auth" json:"oidc3Auth"`
-	AppleAuth     AuthProviderConfig `form:"appleAuth" json:"appleAuth"`
-	InstagramAuth AuthProviderConfig `form:"instagramAuth" json:"instagramAuth"`
-	VKAuth        AuthProviderConfig `form:"vkAuth" json:"vkAuth"`
-	YandexAuth    AuthProviderConfig `form:"yandexAuth" json:"yandexAuth"`
+	GoogleAuth         AuthProviderConfig `form:"googleAuth" json:"googleAuth"`
+	FacebookAuth       AuthProviderConfig `form:"facebookAuth" json:"facebookAuth"`
+	GithubAuth         AuthProviderConfig `form:"githubAuth" json:"githubAuth"`
+	GitlabAuth         AuthProviderConfig `form:"gitlabAuth" json:"gitlabAuth"`
+	DiscordAuth        AuthProviderConfig `form:"discordAuth" json:"discordAuth"`
+	TwitterAuth        AuthProviderConfig `form:"twitterAuth" json:"twitterAuth"`
+	MicrosoftAuth      AuthProviderConfig `form:"microsoftAuth" json:"microsoftAuth"`
+	SpotifyAuth        AuthProviderConfig `form:"spotifyAuth" json:"spotifyAuth"`
+	KakaoAuth          AuthProviderConfig `form:"kakaoAuth" json:"kakaoAuth"`
+	TwitchAuth         AuthProviderConfig `form:"twitchAuth" json:"twitchAuth"`
+	StravaAuth         AuthProviderConfig `form:"stravaAuth" json:"stravaAuth"`
+	GiteeAuth          AuthProviderConfig `form:"giteeAuth" json:"giteeAuth"`
+	LivechatAuth       AuthProviderConfig `form:"livechatAuth" json:"livechatAuth"`
+	GiteaAuth          AuthProviderConfig `form:"giteaAuth" json:"giteaAuth"`
+	OIDCAuth           AuthProviderConfig `form:"oidcAuth" json:"oidcAuth"`
+	OIDC2Auth          AuthProviderConfig `form:"oidc2Auth" json:"oidc2Auth"`
+	OIDC3Auth          AuthProviderConfig `form:"oidc3Auth" json:"oidc3Auth"`
+	AppleAuth          AuthProviderConfig `form:"appleAuth" json:"appleAuth"`
+	InstagramAuth      AuthProviderConfig `form:"instagramAuth" json:"instagramAuth"`
+	VKAuth             AuthProviderConfig `form:"vkAuth" json:"vkAuth"`
+	YandexAuth         AuthProviderConfig `form:"yandexAuth" json:"yandexAuth"`
+	PatreonAuth        AuthProviderConfig `form:"patreonAuth" json:"patreonAuth"`
+	MailcowAuth        AuthProviderConfig `form:"mailcowAuth" json:"mailcowAuth"`
+	BitbucketAuth      AuthProviderConfig `form:"bitbucketAuth" json:"bitbucketAuth"`
+	PlanningcenterAuth AuthProviderConfig `form:"planningcenterAuth" json:"planningcenterAuth"`
 }
 
 // New creates and returns a new default Settings instance.
@@ -80,6 +84,7 @@ func New() *Settings {
 		},
 		Logs: LogsConfig{
 			MaxDays: 5,
+			LogIp:   true,
 		},
 		Smtp: SmtpConfig{
 			Enabled:  false,
@@ -187,6 +192,18 @@ func New() *Settings {
 		YandexAuth: AuthProviderConfig{
 			Enabled: false,
 		},
+		PatreonAuth: AuthProviderConfig{
+			Enabled: false,
+		},
+		MailcowAuth: AuthProviderConfig{
+			Enabled: false,
+		},
+		BitbucketAuth: AuthProviderConfig{
+			Enabled: false,
+		},
+		PlanningcenterAuth: AuthProviderConfig{
+			Enabled: false,
+		},
 	}
 }
 
@@ -230,6 +247,10 @@ func (s *Settings) Validate() error {
 		validation.Field(&s.InstagramAuth),
 		validation.Field(&s.VKAuth),
 		validation.Field(&s.YandexAuth),
+		validation.Field(&s.PatreonAuth),
+		validation.Field(&s.MailcowAuth),
+		validation.Field(&s.BitbucketAuth),
+		validation.Field(&s.PlanningcenterAuth),
 	)
 }
 
@@ -296,6 +317,10 @@ func (s *Settings) RedactClone() (*Settings, error) {
 		&clone.InstagramAuth.ClientSecret,
 		&clone.VKAuth.ClientSecret,
 		&clone.YandexAuth.ClientSecret,
+		&clone.PatreonAuth.ClientSecret,
+		&clone.MailcowAuth.ClientSecret,
+		&clone.BitbucketAuth.ClientSecret,
+		&clone.PlanningcenterAuth.ClientSecret,
 	}
 
 	// mask all sensitive fields
@@ -315,27 +340,31 @@ func (s *Settings) NamedAuthProviderConfigs() map[string]AuthProviderConfig {
 	defer s.mux.RUnlock()
 
 	return map[string]AuthProviderConfig{
-		auth.NameGoogle:     s.GoogleAuth,
-		auth.NameFacebook:   s.FacebookAuth,
-		auth.NameGithub:     s.GithubAuth,
-		auth.NameGitlab:     s.GitlabAuth,
-		auth.NameDiscord:    s.DiscordAuth,
-		auth.NameTwitter:    s.TwitterAuth,
-		auth.NameMicrosoft:  s.MicrosoftAuth,
-		auth.NameSpotify:    s.SpotifyAuth,
-		auth.NameKakao:      s.KakaoAuth,
-		auth.NameTwitch:     s.TwitchAuth,
-		auth.NameStrava:     s.StravaAuth,
-		auth.NameGitee:      s.GiteeAuth,
-		auth.NameLivechat:   s.LivechatAuth,
-		auth.NameGitea:      s.GiteaAuth,
-		auth.NameOIDC:       s.OIDCAuth,
-		auth.NameOIDC + "2": s.OIDC2Auth,
-		auth.NameOIDC + "3": s.OIDC3Auth,
-		auth.NameApple:      s.AppleAuth,
-		auth.NameInstagram:  s.InstagramAuth,
-		auth.NameVK:         s.VKAuth,
-		auth.NameYandex:     s.YandexAuth,
+		auth.NameGoogle:         s.GoogleAuth,
+		auth.NameFacebook:       s.FacebookAuth,
+		auth.NameGithub:         s.GithubAuth,
+		auth.NameGitlab:         s.GitlabAuth,
+		auth.NameDiscord:        s.DiscordAuth,
+		auth.NameTwitter:        s.TwitterAuth,
+		auth.NameMicrosoft:      s.MicrosoftAuth,
+		auth.NameSpotify:        s.SpotifyAuth,
+		auth.NameKakao:          s.KakaoAuth,
+		auth.NameTwitch:         s.TwitchAuth,
+		auth.NameStrava:         s.StravaAuth,
+		auth.NameGitee:          s.GiteeAuth,
+		auth.NameLivechat:       s.LivechatAuth,
+		auth.NameGitea:          s.GiteaAuth,
+		auth.NameOIDC:           s.OIDCAuth,
+		auth.NameOIDC + "2":     s.OIDC2Auth,
+		auth.NameOIDC + "3":     s.OIDC3Auth,
+		auth.NameApple:          s.AppleAuth,
+		auth.NameInstagram:      s.InstagramAuth,
+		auth.NameVK:             s.VKAuth,
+		auth.NameYandex:         s.YandexAuth,
+		auth.NamePatreon:        s.PatreonAuth,
+		auth.NameMailcow:        s.MailcowAuth,
+		auth.NameBitbucket:      s.BitbucketAuth,
+		auth.NamePlanningcenter: s.PlanningcenterAuth,
 	}
 }
 
@@ -434,7 +463,7 @@ type BackupsConfig struct {
 	// Leave it empty to disable the auto backups functionality.
 	Cron string `form:"cron" json:"cron"`
 
-	// CronMaxKeep is the the max number of cron generated backups to
+	// CronMaxKeep is the max number of cron generated backups to
 	// keep before removing older entries.
 	//
 	// This field works only when the cron config has valid cron expression.
@@ -501,6 +530,7 @@ type EmailTemplate struct {
 	Body      string `form:"body" json:"body"`
 	Subject   string `form:"subject" json:"subject"`
 	ActionUrl string `form:"actionUrl" json:"actionUrl"`
+	Hidden    bool   `form:"hidden" json:"hidden"`
 }
 
 // Validate makes EmailTemplate validatable by implementing [validation.Validatable] interface.
@@ -584,7 +614,9 @@ func (t EmailTemplate) Resolve(
 // -------------------------------------------------------------------
 
 type LogsConfig struct {
-	MaxDays int `form:"maxDays" json:"maxDays"`
+	MaxDays  int  `form:"maxDays" json:"maxDays"`
+	MinLevel int  `form:"minLevel" json:"minLevel"`
+	LogIp    bool `form:"logIp" json:"logIp"`
 }
 
 // Validate makes LogsConfig validatable by implementing [validation.Validatable] interface.
@@ -603,6 +635,8 @@ type AuthProviderConfig struct {
 	AuthUrl      string `form:"authUrl" json:"authUrl"`
 	TokenUrl     string `form:"tokenUrl" json:"tokenUrl"`
 	UserApiUrl   string `form:"userApiUrl" json:"userApiUrl"`
+	DisplayName  string `form:"displayName" json:"displayName"`
+	PKCE         *bool  `form:"pkce" json:"pkce"`
 }
 
 // Validate makes `ProviderConfig` validatable by implementing [validation.Validatable] interface.
@@ -619,7 +653,7 @@ func (c AuthProviderConfig) Validate() error {
 // SetupProvider loads the current AuthProviderConfig into the specified provider.
 func (c AuthProviderConfig) SetupProvider(provider auth.Provider) error {
 	if !c.Enabled {
-		return errors.New("The provider is not enabled.")
+		return errors.New("the provider is not enabled")
 	}
 
 	if c.ClientId != "" {
@@ -640,6 +674,14 @@ func (c AuthProviderConfig) SetupProvider(provider auth.Provider) error {
 
 	if c.TokenUrl != "" {
 		provider.SetTokenUrl(c.TokenUrl)
+	}
+
+	if c.DisplayName != "" {
+		provider.SetDisplayName(c.DisplayName)
+	}
+
+	if c.PKCE != nil {
+		provider.SetPKCE(*c.PKCE)
 	}
 
 	return nil

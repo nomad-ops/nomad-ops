@@ -1,10 +1,12 @@
 package apis
 
 import (
+	cryptoRand "crypto/rand"
 	"fmt"
-	"log"
+	"log/slog"
+	"math/big"
 	"net/http"
-	"strings"
+	"time"
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
@@ -15,8 +17,6 @@ import (
 	"github.com/pocketbase/pocketbase/resolvers"
 	"github.com/pocketbase/pocketbase/tools/search"
 )
-
-const expandQueryParam = "expand"
 
 // bindRecordCrudApi registers the record crud api endpoints and
 // the corresponding handlers.
@@ -45,12 +45,12 @@ func (api *recordApi) list(c echo.Context) error {
 		return NewNotFoundError("", "Missing collection context.")
 	}
 
+	requestInfo := RequestInfo(c)
+
 	// forbid users and guests to query special filter/sort fields
-	if err := api.checkForForbiddenQueryFields(c); err != nil {
+	if err := checkForAdminOnlyRuleFields(requestInfo); err != nil {
 		return err
 	}
-
-	requestInfo := RequestInfo(c)
 
 	if requestInfo.Admin == nil && collection.ListRule == nil {
 		// only admins can access if the rule is nil
@@ -74,9 +74,15 @@ func (api *recordApi) list(c echo.Context) error {
 
 	records := []*models.Record{}
 
-	result, err := searchProvider.ParseAndExec(c.QueryParams().Encode(), &records)
+	// note: in v0.23.0 this has been migrated as option check in the search.Provider
+	queryStr := c.QueryParams().Encode()
+	if len(queryStr) > 2048 {
+		return NewBadRequestError("query string is too large", nil)
+	}
+
+	result, err := searchProvider.ParseAndExec(queryStr, &records)
 	if err != nil {
-		return NewBadRequestError("Invalid filter parameters.", err)
+		return NewBadRequestError("", err)
 	}
 
 	event := new(core.RecordsListEvent)
@@ -90,12 +96,45 @@ func (api *recordApi) list(c echo.Context) error {
 			return nil
 		}
 
-		if err := EnrichRecords(e.HttpContext, api.app.Dao(), e.Records); err != nil && api.app.IsDebug() {
-			log.Println(err)
+		if err := EnrichRecords(e.HttpContext, api.app.Dao(), e.Records); err != nil {
+			api.app.Logger().Debug("Failed to enrich list records", slog.String("error", err.Error()))
+		}
+
+		// note: in v0.23.0 this is combined with extra check for repeated attempts
+		//
+		// Add a randomized throttle in case of empty search filter attempts.
+		//
+		// This is just for extra precaution since security researches raised concern regarding the possibity of eventual
+		// timing attacks because the List API rule acts also as filter and executes in a single run with the client-side filters.
+		// This is by design and it is an accepted tradeoff between performance, usability and correctness.
+		//
+		// While technically the below doesn't fully guarantee protection against filter timing attacks, in practice combined with the network latency it makes them even less feasible.
+		// A properly configured rate limiter or individual fields Hidden checks are better suited if you are really concerned about eventual information disclosure by side-channel attacks.
+		//
+		// In all cases it doesn't really matter that much because it doesn't affect the builtin PocketBase security sensitive fields (e.g. password and tokenKey) since they
+		// are not client-side filterable and in the few places where they need to be compared against an external value, a constant time check is used.
+		if requestInfo.Admin == nil &&
+			(collection.ListRule != nil && *collection.ListRule != "") &&
+			(requestInfo.Query["filter"] != "") &&
+			len(e.Records) == 0 {
+			api.app.Logger().Debug("Randomized throttle because of failed filter search", "collectionId", collection.Id)
+			randomizedThrottle(100)
 		}
 
 		return e.HttpContext.JSON(http.StatusOK, e.Result)
 	})
+}
+
+func randomizedThrottle(softMax int64) {
+	var timeout int64
+	randRange, err := cryptoRand.Int(cryptoRand.Reader, big.NewInt(softMax))
+	if err == nil {
+		timeout = randRange.Int64()
+	} else {
+		timeout = softMax
+	}
+
+	time.Sleep(time.Duration(timeout) * time.Millisecond)
 }
 
 func (api *recordApi) view(c echo.Context) error {
@@ -144,8 +183,13 @@ func (api *recordApi) view(c echo.Context) error {
 			return nil
 		}
 
-		if err := EnrichRecord(e.HttpContext, api.app.Dao(), e.Record); err != nil && api.app.IsDebug() {
-			log.Println(err)
+		if err := EnrichRecord(e.HttpContext, api.app.Dao(), e.Record); err != nil {
+			api.app.Logger().Debug(
+				"Failed to enrich view record",
+				slog.String("id", e.Record.Id),
+				slog.String("collectionName", e.Record.Collection().Name),
+				slog.String("error", err.Error()),
+			)
 		}
 
 		return e.HttpContext.JSON(http.StatusOK, e.Record)
@@ -181,6 +225,11 @@ func (api *recordApi) create(c echo.Context) error {
 		testForm.SetFullManageAccess(true)
 		if err := testForm.LoadRequest(c.Request(), ""); err != nil {
 			return NewBadRequestError("Failed to load the submitted data due to invalid formatting.", err)
+		}
+
+		// force unset the verified state to prevent ManageRule misuse
+		if !hasFullManageAccess {
+			testForm.Verified = false
 		}
 
 		createRuleFunc := func(q *dbx.SelectQuery) error {
@@ -237,8 +286,13 @@ func (api *recordApi) create(c echo.Context) error {
 					return NewBadRequestError("Failed to create record.", err)
 				}
 
-				if err := EnrichRecord(e.HttpContext, api.app.Dao(), e.Record); err != nil && api.app.IsDebug() {
-					log.Println(err)
+				if err := EnrichRecord(e.HttpContext, api.app.Dao(), e.Record); err != nil {
+					api.app.Logger().Debug(
+						"Failed to enrich create record",
+						slog.String("id", e.Record.Id),
+						slog.String("collectionName", e.Record.Collection().Name),
+						slog.String("error", err.Error()),
+					)
 				}
 
 				return api.app.OnRecordAfterCreateRequest().Trigger(event, func(e *core.RecordCreateEvent) error {
@@ -324,8 +378,13 @@ func (api *recordApi) update(c echo.Context) error {
 					return NewBadRequestError("Failed to update record.", err)
 				}
 
-				if err := EnrichRecord(e.HttpContext, api.app.Dao(), e.Record); err != nil && api.app.IsDebug() {
-					log.Println(err)
+				if err := EnrichRecord(e.HttpContext, api.app.Dao(), e.Record); err != nil {
+					api.app.Logger().Debug(
+						"Failed to enrich update record",
+						slog.String("id", e.Record.Id),
+						slog.String("collectionName", e.Record.Collection().Name),
+						slog.String("error", err.Error()),
+					)
 				}
 
 				return api.app.OnRecordAfterUpdateRequest().Trigger(event, func(e *core.RecordUpdateEvent) error {
@@ -395,22 +454,4 @@ func (api *recordApi) delete(c echo.Context) error {
 			return e.HttpContext.NoContent(http.StatusNoContent)
 		})
 	})
-}
-
-func (api *recordApi) checkForForbiddenQueryFields(c echo.Context) error {
-	admin, _ := c.Get(ContextAdminKey).(*models.Admin)
-	if admin != nil {
-		return nil // admins are allowed to query everything
-	}
-
-	decodedQuery := c.QueryParam(search.FilterQueryParam) + c.QueryParam(search.SortQueryParam)
-	forbiddenFields := []string{"@collection.", "@request."}
-
-	for _, field := range forbiddenFields {
-		if strings.Contains(decodedQuery, field) {
-			return NewForbiddenError("Only admins can filter by @collection and @request query params", nil)
-		}
-	}
-
-	return nil
 }

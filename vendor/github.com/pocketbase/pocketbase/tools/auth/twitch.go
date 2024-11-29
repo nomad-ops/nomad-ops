@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/twitch"
 )
@@ -23,11 +24,13 @@ type Twitch struct {
 // NewTwitchProvider creates new Twitch provider instance with some defaults.
 func NewTwitchProvider() *Twitch {
 	return &Twitch{&baseProvider{
-		ctx:        context.Background(),
-		scopes:     []string{"user:read:email"},
-		authUrl:    twitch.Endpoint.AuthURL,
-		tokenUrl:   twitch.Endpoint.TokenURL,
-		userApiUrl: "https://api.twitch.tv/helix/users",
+		ctx:         context.Background(),
+		displayName: "Twitch",
+		pkce:        true,
+		scopes:      []string{"user:read:email"},
+		authUrl:     twitch.Endpoint.AuthURL,
+		tokenUrl:    twitch.Endpoint.TokenURL,
+		userApiUrl:  "https://api.twitch.tv/helix/users",
 	}}
 }
 
@@ -72,6 +75,8 @@ func (p *Twitch) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	return user, nil
 }

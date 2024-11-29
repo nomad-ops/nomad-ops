@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -15,18 +15,20 @@ import (
 	"github.com/pocketbase/pocketbase/forms"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/resolvers"
+	"github.com/pocketbase/pocketbase/tools/rest"
 	"github.com/pocketbase/pocketbase/tools/routine"
 	"github.com/pocketbase/pocketbase/tools/search"
 	"github.com/pocketbase/pocketbase/tools/subscriptions"
+	"github.com/spf13/cast"
 )
 
 // bindRealtimeApi registers the realtime api endpoints.
 func bindRealtimeApi(app core.App, rg *echo.Group) {
 	api := realtimeApi{app: app}
 
-	subGroup := rg.Group("/realtime", ActivityLogger(app))
+	subGroup := rg.Group("/realtime")
 	subGroup.GET("", api.connect)
-	subGroup.POST("", api.setSubscriptions)
+	subGroup.POST("", api.setSubscriptions, ActivityLogger(app))
 
 	api.bindEvents()
 }
@@ -49,16 +51,19 @@ func (api *realtimeApi) connect(c echo.Context) error {
 			Client:      client,
 		}
 
-		if err := api.app.OnRealtimeDisconnectRequest().Trigger(disconnectEvent); err != nil && api.app.IsDebug() {
-			log.Println(err)
+		if err := api.app.OnRealtimeDisconnectRequest().Trigger(disconnectEvent); err != nil {
+			api.app.Logger().Debug(
+				"OnRealtimeDisconnectRequest error",
+				slog.String("clientId", client.Id()),
+				slog.String("error", err.Error()),
+			)
 		}
 
 		api.app.SubscriptionsBroker().Unregister(client.Id())
 	}()
 
-	c.Response().Header().Set("Content-Type", "text/event-stream; charset=UTF-8")
+	c.Response().Header().Set("Content-Type", "text/event-stream")
 	c.Response().Header().Set("Cache-Control", "no-store")
-	c.Response().Header().Set("Connection", "keep-alive")
 	// https://github.com/pocketbase/pocketbase/discussions/480#discussioncomment-3657640
 	// https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_buffering
 	c.Response().Header().Set("X-Accel-Buffering", "no")
@@ -73,9 +78,7 @@ func (api *realtimeApi) connect(c echo.Context) error {
 		return err
 	}
 
-	if api.app.IsDebug() {
-		log.Printf("Realtime connection established: %s\n", client.Id())
-	}
+	api.app.Logger().Debug("Realtime connection established.", slog.String("clientId", client.Id()))
 
 	// signalize established connection (aka. fire "connect" message)
 	connectMsgEvent := &core.RealtimeMessageEvent{
@@ -97,9 +100,11 @@ func (api *realtimeApi) connect(c echo.Context) error {
 		return api.app.OnRealtimeAfterMessageSend().Trigger(e)
 	})
 	if connectMsgErr != nil {
-		if api.app.IsDebug() {
-			log.Println("Realtime connection closed (failed to deliver PB_CONNECT):", client.Id(), connectMsgErr)
-		}
+		api.app.Logger().Debug(
+			"Realtime connection closed (failed to deliver PB_CONNECT)",
+			slog.String("clientId", client.Id()),
+			slog.String("error", connectMsgErr.Error()),
+		)
 		return nil
 	}
 
@@ -115,9 +120,10 @@ func (api *realtimeApi) connect(c echo.Context) error {
 		case msg, ok := <-client.Channel():
 			if !ok {
 				// channel is closed
-				if api.app.IsDebug() {
-					log.Println("Realtime connection closed (closed channel):", client.Id())
-				}
+				api.app.Logger().Debug(
+					"Realtime connection closed (closed channel)",
+					slog.String("clientId", client.Id()),
+				)
 				return nil
 			}
 
@@ -137,9 +143,11 @@ func (api *realtimeApi) connect(c echo.Context) error {
 				return api.app.OnRealtimeAfterMessageSend().Trigger(msgEvent)
 			})
 			if msgErr != nil {
-				if api.app.IsDebug() {
-					log.Println("Realtime connection closed (failed to deliver message):", client.Id(), msgErr)
-				}
+				api.app.Logger().Debug(
+					"Realtime connection closed (failed to deliver message)",
+					slog.String("clientId", client.Id()),
+					slog.String("error", msgErr.Error()),
+				)
 				return nil
 			}
 
@@ -147,9 +155,10 @@ func (api *realtimeApi) connect(c echo.Context) error {
 			idleTimer.Reset(idleTimeout)
 		case <-c.Request().Context().Done():
 			// connection is closed
-			if api.app.IsDebug() {
-				log.Println("Realtime connection closed (cancelled request):", client.Id())
-			}
+			api.app.Logger().Debug(
+				"Realtime connection closed (cancelled request)",
+				slog.String("clientId", client.Id()),
+			)
 			return nil
 		}
 	}
@@ -199,6 +208,12 @@ func (api *realtimeApi) setSubscriptions(c echo.Context) error {
 		// subscribe to the new subscriptions
 		e.Client.Subscribe(e.Subscriptions...)
 
+		api.app.Logger().Debug(
+			"Realtime subscriptions updated.",
+			slog.String("clientId", e.Client.Id()),
+			slog.Any("subscriptions", e.Subscriptions),
+		)
+
 		return api.app.OnRealtimeAfterSubscribeRequest().Trigger(event, func(e *core.RealtimeSubscribeEvent) error {
 			if e.HttpContext.Response().Committed {
 				return nil
@@ -230,7 +245,7 @@ func (api *realtimeApi) unregisterClientsByAuthModel(contextKey string, model mo
 		if clientModel != nil &&
 			clientModel.TableName() == model.TableName() &&
 			clientModel.GetId() == model.GetId() {
-			api.app.SubscriptionsBroker().Unregister(client.Id())
+			client.Unset(contextKey)
 		}
 	}
 
@@ -266,8 +281,13 @@ func (api *realtimeApi) bindEvents() {
 
 	api.app.OnModelAfterCreate().PreAdd(func(e *core.ModelEvent) error {
 		if record := api.resolveRecord(e.Model); record != nil {
-			if err := api.broadcastRecord("create", record, false); err != nil && api.app.IsDebug() {
-				log.Println(err)
+			if err := api.broadcastRecord("create", record, false); err != nil {
+				api.app.Logger().Debug(
+					"Failed to broadcast record create",
+					slog.String("id", record.Id),
+					slog.String("collectionName", record.Collection().Name),
+					slog.String("error", err.Error()),
+				)
 			}
 		}
 		return nil
@@ -275,8 +295,13 @@ func (api *realtimeApi) bindEvents() {
 
 	api.app.OnModelAfterUpdate().PreAdd(func(e *core.ModelEvent) error {
 		if record := api.resolveRecord(e.Model); record != nil {
-			if err := api.broadcastRecord("update", record, false); err != nil && api.app.IsDebug() {
-				log.Println(err)
+			if err := api.broadcastRecord("update", record, false); err != nil {
+				api.app.Logger().Debug(
+					"Failed to broadcast record update",
+					slog.String("id", record.Id),
+					slog.String("collectionName", record.Collection().Name),
+					slog.String("error", err.Error()),
+				)
 			}
 		}
 		return nil
@@ -284,8 +309,13 @@ func (api *realtimeApi) bindEvents() {
 
 	api.app.OnModelBeforeDelete().Add(func(e *core.ModelEvent) error {
 		if record := api.resolveRecord(e.Model); record != nil {
-			if err := api.broadcastRecord("delete", record, true); err != nil && api.app.IsDebug() {
-				log.Println(err)
+			if err := api.broadcastRecord("delete", record, true); err != nil {
+				api.app.Logger().Debug(
+					"Failed to dry cache record delete",
+					slog.String("id", record.Id),
+					slog.String("collectionName", record.Collection().Name),
+					slog.String("error", err.Error()),
+				)
 			}
 		}
 		return nil
@@ -293,8 +323,13 @@ func (api *realtimeApi) bindEvents() {
 
 	api.app.OnModelAfterDelete().Add(func(e *core.ModelEvent) error {
 		if record := api.resolveRecord(e.Model); record != nil {
-			if err := api.broadcastDryCachedRecord("delete", record); err != nil && api.app.IsDebug() {
-				log.Println(err)
+			if err := api.broadcastDryCachedRecord("delete", record); err != nil {
+				api.app.Logger().Debug(
+					"Failed to broadcast record delete",
+					slog.String("id", record.Id),
+					slog.String("collectionName", record.Collection().Name),
+					slog.String("error", err.Error()),
+				)
 			}
 		}
 		return nil
@@ -327,58 +362,16 @@ func (api *realtimeApi) resolveRecordCollection(model models.Model) (collection 
 	return collection
 }
 
-// canAccessRecord checks if the subscription client has access to the specified record model.
-func (api *realtimeApi) canAccessRecord(client subscriptions.Client, record *models.Record, accessRule *string) bool {
-	admin, _ := client.Get(ContextAdminKey).(*models.Admin)
-	if admin != nil {
-		// admins can access everything
-		return true
-	}
-
-	if accessRule == nil {
-		// only admins can access this record
-		return false
-	}
-
-	ruleFunc := func(q *dbx.SelectQuery) error {
-		if *accessRule == "" {
-			return nil // empty public rule
-		}
-
-		// mock request data
-		requestInfo := &models.RequestInfo{
-			Method: "GET",
-		}
-		requestInfo.AuthRecord, _ = client.Get(ContextAuthRecordKey).(*models.Record)
-
-		resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), record.Collection(), requestInfo, true)
-		expr, err := search.FilterData(*accessRule).BuildExpr(resolver)
-		if err != nil {
-			return err
-		}
-		resolver.UpdateQuery(q)
-		q.AndWhere(expr)
-
-		return nil
-	}
-
-	foundRecord, err := api.app.Dao().FindRecordById(record.Collection().Id, record.Id, ruleFunc)
-	if err == nil && foundRecord != nil {
-		return true
-	}
-
-	return false
-}
-
+// recordData represents the broadcasted record subscrition message data.
 type recordData struct {
-	Action string         `json:"action"`
-	Record *models.Record `json:"record"`
+	Record any    `json:"record"` /* map or models.Record */
+	Action string `json:"action"`
 }
 
 func (api *realtimeApi) broadcastRecord(action string, record *models.Record, dryCache bool) error {
 	collection := record.Collection()
 	if collection == nil {
-		return errors.New("Record collection not set.")
+		return errors.New("[broadcastRecord] Record collection not set")
 	}
 
 	clients := api.app.SubscriptionsBroker().Clients()
@@ -386,67 +379,126 @@ func (api *realtimeApi) broadcastRecord(action string, record *models.Record, dr
 		return nil // no subscribers
 	}
 
-	// create a clean record copy without expand and unknown fields
-	// because we don't know if the clients have permissions to view them
-	cleanRecord := record.CleanCopy()
-
 	subscriptionRuleMap := map[string]*string{
-		(collection.Name + "/" + cleanRecord.Id): collection.ViewRule,
-		(collection.Id + "/" + cleanRecord.Id):   collection.ViewRule,
-		(collection.Name + "/*"):                 collection.ListRule,
-		(collection.Id + "/*"):                   collection.ListRule,
-		// @deprecated: the same as the wildcard topic but kept for backward compatibility
-		collection.Name: collection.ListRule,
-		collection.Id:   collection.ListRule,
+		(collection.Name + "/" + record.Id + "?"): collection.ViewRule,
+		(collection.Id + "/" + record.Id + "?"):   collection.ViewRule,
+		(collection.Name + "/*?"):                 collection.ListRule,
+		(collection.Id + "/*?"):                   collection.ListRule,
+		// @deprecated: the same      as the wildcard topic but kept for backward compatibility
+		(collection.Name + "?"): collection.ListRule,
+		(collection.Id + "?"):   collection.ListRule,
 	}
 
-	data := &recordData{
-		Action: action,
-		Record: cleanRecord,
-	}
-
-	dataBytes, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
+	dryCacheKey := action + "/" + record.Id
 
 	for _, client := range clients {
 		client := client
 
-		for subscription, rule := range subscriptionRuleMap {
-			if !client.HasSubscription(subscription) {
+		// note: not executed concurrently to avoid races and to ensure
+		// that the access checks are applied for the current record db state
+		for prefix, rule := range subscriptionRuleMap {
+			subs := client.Subscriptions(prefix)
+			if len(subs) == 0 {
 				continue
 			}
 
-			if !api.canAccessRecord(client, data.Record, rule) {
-				continue
-			}
+			for sub, options := range subs {
+				// create a clean record copy without expand and unknown fields
+				// because we don't know yet which exact fields the client subscription has permissions to access
+				cleanRecord := record.CleanCopy()
 
-			msg := subscriptions.Message{
-				Name: subscription,
-				Data: dataBytes,
-			}
-
-			// ignore the auth record email visibility checks for
-			// auth owner, admin or manager
-			if collection.IsAuth() {
-				authId := extractAuthIdFromGetter(client)
-				if authId == data.Record.Id ||
-					api.canAccessRecord(client, data.Record, collection.AuthOptions().ManageRule) {
-					data.Record.IgnoreEmailVisibility(true) // ignore
-					if newData, err := json.Marshal(data); err == nil {
-						msg.Data = newData
-					}
-					data.Record.IgnoreEmailVisibility(false) // restore
+				// mock request data
+				requestInfo := &models.RequestInfo{
+					Context: models.RequestInfoContextRealtime,
+					Method:  "GET",
+					Query:   options.Query,
+					Headers: options.Headers,
 				}
-			}
+				requestInfo.Admin, _ = client.Get(ContextAdminKey).(*models.Admin)
+				requestInfo.AuthRecord, _ = client.Get(ContextAuthRecordKey).(*models.Record)
 
-			if dryCache {
-				client.Set(action+"/"+data.Record.Id, msg)
-			} else {
-				routine.FireAndForget(func() {
-					client.Send(msg)
-				})
+				if !api.canAccessRecord(cleanRecord, requestInfo, rule) {
+					continue
+				}
+
+				rawExpand := cast.ToString(options.Query[expandQueryParam])
+				if rawExpand != "" {
+					expandErrs := api.app.Dao().ExpandRecord(cleanRecord, strings.Split(rawExpand, ","), expandFetch(api.app.Dao(), requestInfo))
+					if len(expandErrs) > 0 {
+						api.app.Logger().Debug(
+							"[broadcastRecord] expand errors",
+							slog.String("id", cleanRecord.Id),
+							slog.String("collectionName", cleanRecord.Collection().Name),
+							slog.String("sub", sub),
+							slog.String("expand", rawExpand),
+							slog.Any("errors", expandErrs),
+						)
+					}
+				}
+
+				// ignore the auth record email visibility checks
+				// for auth owner, admin or manager
+				if collection.IsAuth() {
+					authId := extractAuthIdFromGetter(client)
+					if authId == cleanRecord.Id {
+						if api.canAccessRecord(cleanRecord, requestInfo, collection.AuthOptions().ManageRule) {
+							cleanRecord.IgnoreEmailVisibility(true)
+						}
+					}
+				}
+
+				data := &recordData{
+					Action: action,
+					Record: cleanRecord,
+				}
+
+				// check fields
+				rawFields := cast.ToString(options.Query[fieldsQueryParam])
+				if rawFields != "" {
+					decoded, err := rest.PickFields(cleanRecord, rawFields)
+					if err == nil {
+						data.Record = decoded
+					} else {
+						api.app.Logger().Debug(
+							"[broadcastRecord] pick fields error",
+							slog.String("id", cleanRecord.Id),
+							slog.String("collectionName", cleanRecord.Collection().Name),
+							slog.String("sub", sub),
+							slog.String("fields", rawFields),
+							slog.String("error", err.Error()),
+						)
+					}
+				}
+
+				dataBytes, err := json.Marshal(data)
+				if err != nil {
+					api.app.Logger().Debug(
+						"[broadcastRecord] data marshal error",
+						slog.String("id", cleanRecord.Id),
+						slog.String("collectionName", cleanRecord.Collection().Name),
+						slog.String("error", err.Error()),
+					)
+					continue
+				}
+
+				msg := subscriptions.Message{
+					Name: sub,
+					Data: dataBytes,
+				}
+
+				if dryCache {
+					messages, ok := client.Get(dryCacheKey).([]subscriptions.Message)
+					if !ok {
+						messages = []subscriptions.Message{msg}
+					} else {
+						messages = append(messages, msg)
+					}
+					client.Set(dryCacheKey, messages)
+				} else {
+					routine.FireAndForget(func() {
+						client.Send(msg)
+					})
+				}
 			}
 		}
 	}
@@ -454,14 +506,14 @@ func (api *realtimeApi) broadcastRecord(action string, record *models.Record, dr
 	return nil
 }
 
-// broadcastDryCachedRecord broadcasts record if it is cached in the client context.
+// broadcastDryCachedRecord broadcasts all cached record related messages.
 func (api *realtimeApi) broadcastDryCachedRecord(action string, record *models.Record) error {
+	key := action + "/" + record.Id
+
 	clients := api.app.SubscriptionsBroker().Clients()
 
 	for _, client := range clients {
-		key := action + "/" + record.Id
-
-		msg, ok := client.Get(key).(subscriptions.Message)
+		messages, ok := client.Get(key).([]subscriptions.Message)
 		if !ok {
 			continue
 		}
@@ -471,9 +523,12 @@ func (api *realtimeApi) broadcastDryCachedRecord(action string, record *models.R
 		client := client
 
 		routine.FireAndForget(func() {
-			client.Send(msg)
+			for _, msg := range messages {
+				client.Send(msg)
+			}
 		})
 	}
+
 	return nil
 }
 
@@ -493,4 +548,46 @@ func extractAuthIdFromGetter(val getter) string {
 	}
 
 	return ""
+}
+
+// canAccessRecord checks if the subscription client has access to the specified record model.
+func (api *realtimeApi) canAccessRecord(
+	record *models.Record,
+	requestInfo *models.RequestInfo,
+	accessRule *string,
+) bool {
+	// check the access rule
+	// ---
+	if ok, _ := api.app.Dao().CanAccessRecord(record, requestInfo, accessRule); !ok {
+		return false
+	}
+
+	// check the subscription client-side filter (if any)
+	// ---
+	filter := cast.ToString(requestInfo.Query[search.FilterQueryParam])
+	if filter == "" {
+		return true // no further checks needed
+	}
+
+	if err := checkForAdminOnlyRuleFields(requestInfo); err != nil {
+		return false
+	}
+
+	ruleFunc := func(q *dbx.SelectQuery) error {
+		resolver := resolvers.NewRecordFieldResolver(api.app.Dao(), record.Collection(), requestInfo, false)
+
+		expr, err := search.FilterData(filter).BuildExpr(resolver)
+		if err != nil {
+			return err
+		}
+		q.AndWhere(expr)
+
+		resolver.UpdateQuery(q)
+
+		return nil
+	}
+
+	_, err := api.app.Dao().FindRecordById(record.Collection().Id, record.Id, ruleFunc)
+
+	return err == nil
 }

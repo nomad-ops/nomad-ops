@@ -70,7 +70,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime"
 	"net/http"
@@ -128,12 +127,11 @@ func (r *Reader) Read(p []byte) (int, error) {
 		// to (SeekEnd, 0) and use the return value to determine the size
 		// of the data, then Seek back to (SeekStart, 0).
 		saved := r.savedOffset
-		r.savedOffset = -1
 		if r.relativeOffset == saved {
 			// Nope! We're at the same place we left off.
+			r.savedOffset = -1
 		} else {
 			// Yep! We've changed the offset. Recreate the reader.
-			_ = r.r.Close()
 			length := r.baseLength
 			if length >= 0 {
 				length -= r.relativeOffset
@@ -142,11 +140,13 @@ func (r *Reader) Read(p []byte) (int, error) {
 					return 0, gcerr.Newf(gcerr.Internal, nil, "blob: invalid Seek (base length %d, relative offset %d)", r.baseLength, r.relativeOffset)
 				}
 			}
-			var err error
-			r.r, err = r.b.NewRangeReader(r.ctx, r.key, r.baseOffset+r.relativeOffset, length, r.dopts)
+			newR, err := r.b.NewRangeReader(r.ctx, r.key, r.baseOffset+r.relativeOffset, length, r.dopts)
 			if err != nil {
 				return 0, wrapError(r.b, err, r.key)
 			}
+			_ = r.r.Close()
+			r.savedOffset = -1
+			r.r = newR
 		}
 	}
 	n, err := r.r.Read(p)
@@ -731,7 +731,7 @@ func (b *Bucket) ReadAll(ctx context.Context, key string) (_ []byte, err error) 
 		return nil, err
 	}
 	defer r.Close()
-	return ioutil.ReadAll(r)
+	return io.ReadAll(r)
 }
 
 // Download writes the content of a blob into an io.Writer w.
@@ -1083,14 +1083,15 @@ func (b *Bucket) NewWriter(ctx context.Context, key string, opts *WriterOptions)
 		opts = &WriterOptions{}
 	}
 	dopts := &driver.WriterOptions{
-		CacheControl:       opts.CacheControl,
-		ContentDisposition: opts.ContentDisposition,
-		ContentEncoding:    opts.ContentEncoding,
-		ContentLanguage:    opts.ContentLanguage,
-		ContentMD5:         opts.ContentMD5,
-		BufferSize:         opts.BufferSize,
-		MaxConcurrency:     opts.MaxConcurrency,
-		BeforeWrite:        opts.BeforeWrite,
+		CacheControl:                opts.CacheControl,
+		ContentDisposition:          opts.ContentDisposition,
+		ContentEncoding:             opts.ContentEncoding,
+		ContentLanguage:             opts.ContentLanguage,
+		ContentMD5:                  opts.ContentMD5,
+		BufferSize:                  opts.BufferSize,
+		MaxConcurrency:              opts.MaxConcurrency,
+		BeforeWrite:                 opts.BeforeWrite,
+		DisableContentTypeDetection: opts.DisableContentTypeDetection,
 	}
 	if len(opts.Metadata) > 0 {
 		// Services are inconsistent, but at least some treat keys
@@ -1138,13 +1139,16 @@ func (b *Bucket) NewWriter(ctx context.Context, key string, opts *WriterOptions)
 		md5hash:          md5.New(),
 		statsTagMutators: []tag.Mutator{tag.Upsert(oc.ProviderKey, b.tracer.Provider)},
 	}
-	if opts.ContentType != "" {
-		t, p, err := mime.ParseMediaType(opts.ContentType)
-		if err != nil {
-			cancel()
-			return nil, err
+	if opts.ContentType != "" || opts.DisableContentTypeDetection {
+		var ct string
+		if opts.ContentType != "" {
+			t, p, err := mime.ParseMediaType(opts.ContentType)
+			if err != nil {
+				cancel()
+				return nil, err
+			}
+			ct = mime.FormatMediaType(t, p)
 		}
-		ct := mime.FormatMediaType(t, p)
 		dw, err := b.b.NewTypedWriter(ctx, key, ct, dopts)
 		if err != nil {
 			cancel()
@@ -1379,8 +1383,17 @@ type WriterOptions struct {
 	// ContentType specifies the MIME type of the blob being written. If not set,
 	// it will be inferred from the content using the algorithm described at
 	// http://mimesniff.spec.whatwg.org/.
+	// Set DisableContentTypeDetection to true to disable the above and force
+	// the ContentType to stay empty.
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
 	ContentType string
+
+	// When true, if ContentType is the empty string, it will stay the empty
+	// string rather than being inferred from the content.
+	// Note that while the blob will be written with an empty string ContentType,
+	// most providers will fill one in during reads, so don't expect an empty
+	// ContentType if you read the blob back.
+	DisableContentTypeDetection bool
 
 	// ContentMD5 is used as a message integrity check.
 	// If len(ContentMD5) > 0, the MD5 hash of the bytes written must match

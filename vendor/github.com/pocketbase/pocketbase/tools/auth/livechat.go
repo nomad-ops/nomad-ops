@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 )
 
@@ -20,11 +21,13 @@ type Livechat struct {
 // NewLivechatProvider creates new Livechat provider instance with some defaults.
 func NewLivechatProvider() *Livechat {
 	return &Livechat{&baseProvider{
-		ctx:        context.Background(),
-		scopes:     []string{}, // default scopes are specified from the provider dashboard
-		authUrl:    "https://accounts.livechat.com/",
-		tokenUrl:   "https://accounts.livechat.com/token",
-		userApiUrl: "https://accounts.livechat.com/v2/accounts/me",
+		ctx:         context.Background(),
+		displayName: "LiveChat",
+		pkce:        true,
+		scopes:      []string{}, // default scopes are specified from the provider dashboard
+		authUrl:     "https://accounts.livechat.com/",
+		tokenUrl:    "https://accounts.livechat.com/token",
+		userApiUrl:  "https://accounts.livechat.com/v2/accounts/me",
 	}}
 }
 
@@ -61,6 +64,8 @@ func (p *Livechat) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	if extracted.EmailVerified {
 		user.Email = extracted.Email

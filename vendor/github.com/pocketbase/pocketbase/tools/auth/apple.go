@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/pocketbase/pocketbase/tools/types"
 	"github.com/spf13/cast"
 	"golang.org/x/oauth2"
 )
@@ -35,10 +36,12 @@ type Apple struct {
 func NewAppleProvider() *Apple {
 	return &Apple{
 		baseProvider: &baseProvider{
-			scopes:   nil, // custom scopes are currently not supported since they require a POST redirect
-			ctx:      context.Background(),
-			authUrl:  "https://appleid.apple.com/auth/authorize",
-			tokenUrl: "https://appleid.apple.com/auth/token",
+			ctx:         context.Background(),
+			displayName: "Apple",
+			pkce:        true,
+			scopes:      []string{"name", "email"},
+			authUrl:     "https://appleid.apple.com/auth/authorize",
+			tokenUrl:    "https://appleid.apple.com/auth/token",
 		},
 		jwksUrl: "https://appleid.apple.com/auth/keys",
 	}
@@ -60,8 +63,15 @@ func (p *Apple) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 
 	extracted := struct {
 		Id            string `json:"sub"`
+		Name          string `json:"name"`
 		Email         string `json:"email"`
 		EmailVerified any    `json:"email_verified"` // could be string or bool
+		User          struct {
+			Name struct {
+				FirstName string `json:"firstName"`
+				LastName  string `json:"lastName"`
+			} `json:"name"`
+		} `json:"user"`
 	}{}
 	if err := json.Unmarshal(data, &extracted); err != nil {
 		return nil, err
@@ -69,13 +79,20 @@ func (p *Apple) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 
 	user := &AuthUser{
 		Id:           extracted.Id,
+		Name:         extracted.Name,
 		RawUser:      rawUser,
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
 
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
+
 	if cast.ToBool(extracted.EmailVerified) {
 		user.Email = extracted.Email
+	}
+
+	if user.Name == "" {
+		user.Name = strings.TrimSpace(extracted.User.Name.FirstName + " " + extracted.User.Name.LastName)
 	}
 
 	return user, nil
@@ -91,6 +108,18 @@ func (p *Apple) FetchRawUserData(token *oauth2.Token) ([]byte, error) {
 	claims, err := p.parseAndVerifyIdToken(idToken)
 	if err != nil {
 		return nil, err
+	}
+
+	// Apple only returns the user object the first time the user authorizes the app
+	// https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_js/configuring_your_webpage_for_sign_in_with_apple#3331292
+	rawUser, _ := token.Extra("user").(string)
+	if rawUser != "" {
+		user := map[string]any{}
+		err = json.Unmarshal([]byte(rawUser), &user)
+		if err != nil {
+			return nil, err
+		}
+		claims["user"] = user
 	}
 
 	return json.Marshal(claims)

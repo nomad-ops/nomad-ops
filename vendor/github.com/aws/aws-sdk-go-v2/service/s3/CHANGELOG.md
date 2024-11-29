@@ -1,3 +1,260 @@
+# v1.60.1 (2024-08-22)
+
+* No change notes available for this release.
+
+# v1.60.0 (2024-08-20)
+
+* **Feature**: Amazon Simple Storage Service / Features : Add support for conditional writes for PutObject and CompleteMultipartUpload APIs.
+
+# v1.59.0 (2024-08-15)
+
+* **Feature**: Amazon Simple Storage Service / Features  : Adds support for pagination in the S3 ListBuckets API.
+* **Dependency Update**: Bump minimum Go version to 1.21.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.58.3 (2024-08-02)
+
+* **Bug Fix**: Add assurance tests for auth scheme selection logic.
+
+# v1.58.2 (2024-07-10.2)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.58.1 (2024-07-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.58.0 (2024-07-02)
+
+* **Feature**: Added response overrides to Head Object requests.
+
+# v1.57.1 (2024-06-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.57.0 (2024-06-26)
+
+* **Feature**: Support list-of-string endpoint parameter.
+
+# v1.56.1 (2024-06-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.56.0 (2024-06-18)
+
+* **Feature**: Track usage of various AWS SDK features in user-agent string.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.2 (2024-06-17)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.1 (2024-06-07)
+
+* **Bug Fix**: Add clock skew correction on all service clients
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.55.0 (2024-06-05)
+
+* **Feature**: Added new params copySource and key to copyObject API for supporting S3 Access Grants plugin. These changes will not change any of the existing S3 API functionality.
+* **Bug Fix**: Add S3-specific smithy protocol tests.
+
+# v1.54.4 (2024-06-03)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.54.3 (2024-05-23)
+
+* **Bug Fix**: Prevent parsing failures for nonstandard `Expires` values in responses. If the SDK cannot parse the value set in the response header for this field it will now be returned as `nil`. A new field, `ExpiresString`, has been added that will retain the unparsed value from the response (regardless of whether it came back in a format recognized by the SDK).
+
+# v1.54.2 (2024-05-16)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.54.1 (2024-05-15)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.54.0 (2024-05-14)
+
+* **Feature**: Updated a few x-id in the http uri traits
+
+# v1.53.2 (2024-05-08)
+
+* **Bug Fix**: GoDoc improvement
+
+# v1.53.1 (2024-03-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.53.0 (2024-03-18)
+
+* **Feature**: Fix two issues with response root node names.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.52.1 (2024-03-15)
+
+* **Documentation**: Documentation updates for Amazon S3.
+
+# v1.52.0 (2024-03-13)
+
+* **Feature**: This release makes the default option for S3 on Outposts request signing to use the SigV4A algorithm when using AWS Common Runtime (CRT).
+
+# v1.51.4 (2024-03-07)
+
+* **Bug Fix**: Remove dependency on go-cmp.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.51.3 (2024-03-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.51.2 (2024-03-04)
+
+* **Bug Fix**: Update internal/presigned-url dependency for corrected API name.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.51.1 (2024-02-23)
+
+* **Bug Fix**: Move all common, SDK-side middleware stack ops into the service client module to prevent cross-module compatibility issues in the future.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.51.0 (2024-02-22)
+
+* **Feature**: Add middleware stack snapshot tests.
+
+# v1.50.3 (2024-02-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.50.2 (2024-02-20)
+
+* **Bug Fix**: When sourcing values for a service's `EndpointParameters`, the lack of a configured region (i.e. `options.Region == ""`) will now translate to a `nil` value for `EndpointParameters.Region` instead of a pointer to the empty string `""`. This will result in a much more explicit error when calling an operation instead of an obscure hostname lookup failure.
+
+# v1.50.1 (2024-02-19)
+
+* **Bug Fix**: Prevent potential panic caused by invalid comparison of credentials.
+
+# v1.50.0 (2024-02-16)
+
+* **Feature**: Add new ClientOptions field to waiter config which allows you to extend the config for operation calls made by waiters.
+
+# v1.49.0 (2024-02-13)
+
+* **Feature**: Bump minimum Go version to 1.20 per our language support policy.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.48.1 (2024-01-24)
+
+* No change notes available for this release.
+
+# v1.48.0 (2024-01-05)
+
+* **Feature**: Support smithy sigv4a trait for codegen.
+
+# v1.47.8 (2024-01-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.47.7 (2023-12-20)
+
+* No change notes available for this release.
+
+# v1.47.6 (2023-12-18)
+
+* No change notes available for this release.
+
+# v1.47.5 (2023-12-08)
+
+* **Bug Fix**: Add non-vhostable buckets to request path when using legacy V1 endpoint resolver.
+* **Bug Fix**: Improve uniqueness of default S3Express sesssion credentials cache keying to prevent collision in multi-credential scenarios.
+* **Bug Fix**: Reinstate presence of default Retryer in functional options, but still respect max attempts set therein.
+
+# v1.47.4 (2023-12-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.47.3 (2023-12-06)
+
+* **Bug Fix**: Restore pre-refactor auth behavior where all operations could technically be performed anonymously.
+
+# v1.47.2 (2023-12-01)
+
+* **Bug Fix**: Correct wrapping of errors in authentication workflow.
+* **Bug Fix**: Correctly recognize cache-wrapped instances of AnonymousCredentials at client construction.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.47.1 (2023-11-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.47.0 (2023-11-29)
+
+* **Feature**: Expose Options() accessor on service clients.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.46.0 (2023-11-28.2)
+
+* **Feature**: Add S3Express support.
+* **Feature**: Adds support for S3 Express One Zone.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.45.1 (2023-11-28)
+
+* **Bug Fix**: Respect setting RetryMaxAttempts in functional options at client construction.
+
+# v1.45.0 (2023-11-27)
+
+* **Feature**: Adding new params - Key and Prefix, to S3 API operations for supporting S3 Access Grants. Note - These updates will not change any of the existing S3 API functionality.
+
+# v1.44.0 (2023-11-21)
+
+* **Feature**: Add support for automatic date based partitioning in S3 Server Access Logs.
+* **Bug Fix**: Don't send MaxKeys/MaxUploads=0 when unspecified in ListObjectVersions and ListMultipartUploads paginators.
+
+# v1.43.1 (2023-11-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.43.0 (2023-11-17)
+
+* **Feature**: **BREAKING CHANGE** Correct nullability of a large number of S3 structure fields. See https://github.com/aws/aws-sdk-go-v2/issues/2162.
+* **Feature**: Removes all default 0 values for numbers and false values for booleans
+
+# v1.42.2 (2023-11-15)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.42.1 (2023-11-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.42.0 (2023-11-01)
+
+* **Feature**: Adds support for configured endpoints via environment variables and the AWS shared configuration file.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.41.0 (2023-10-31)
+
+* **Feature**: **BREAKING CHANGE**: Bump minimum go version to 1.19 per the revised [go version support policy](https://aws.amazon.com/blogs/developer/aws-sdk-for-go-aligns-with-go-release-policy-on-supported-runtimes/).
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.2 (2023-10-12)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.1 (2023-10-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.0 (2023-09-26)
+
+* **Feature**: This release adds a new field COMPLETED to the ReplicationStatus Enum. You can now use this field to validate the replication status of S3 objects using the AWS SDK.
+
+# v1.39.0 (2023-09-20)
+
+* **Feature**: Fix an issue where the SDK can fail to unmarshall response due to NumberFormatException
+
 # v1.38.5 (2023-08-21)
 
 * **Dependency Update**: Updated to the latest SDK module versions

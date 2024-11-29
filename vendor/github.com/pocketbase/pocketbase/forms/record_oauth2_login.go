@@ -7,7 +7,7 @@ import (
 	"time"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
-	"github.com/go-ozzo/ozzo-validation/v4/is"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
@@ -46,7 +46,7 @@ type RecordOAuth2Login struct {
 	// The authorization code returned from the initial request.
 	Code string `form:"code" json:"code"`
 
-	// The code verifier sent with the initial request as part of the code_challenge.
+	// The optional PKCE code verifier as part of the code_challenge sent with the initial request.
 	CodeVerifier string `form:"codeVerifier" json:"codeVerifier"`
 
 	// The redirect url sent with the initial request.
@@ -88,8 +88,7 @@ func (form *RecordOAuth2Login) Validate() error {
 	return validation.ValidateStruct(form,
 		validation.Field(&form.Provider, validation.Required, validation.By(form.checkProviderName)),
 		validation.Field(&form.Code, validation.Required),
-		validation.Field(&form.CodeVerifier, validation.Required),
-		validation.Field(&form.RedirectUrl, validation.Required, is.URL),
+		validation.Field(&form.RedirectUrl, validation.Required),
 	)
 }
 
@@ -130,6 +129,10 @@ func (form *RecordOAuth2Login) Submit(
 		return nil, nil, err
 	}
 
+	if form.Provider == auth.NameInstagram {
+		form.app.Logger().Warn("Instagram OAuth2 provider is deprecated and will stop working after December 4th. For more details please check https://github.com/pocketbase/pocketbase/discussions/5652.")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -143,11 +146,14 @@ func (form *RecordOAuth2Login) Submit(
 
 	provider.SetRedirectUrl(form.RedirectUrl)
 
+	var opts []oauth2.AuthCodeOption
+
+	if provider.PKCE() {
+		opts = append(opts, oauth2.SetAuthURLParam("code_verifier", form.CodeVerifier))
+	}
+
 	// fetch token
-	token, err := provider.FetchToken(
-		form.Code,
-		oauth2.SetAuthURLParam("code_verifier", form.CodeVerifier),
-	)
+	token, err := provider.FetchToken(form.Code, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -161,7 +167,11 @@ func (form *RecordOAuth2Login) Submit(
 	var authRecord *models.Record
 
 	// check for existing relation with the auth record
-	rel, _ := form.dao.FindExternalAuthByProvider(form.Provider, authUser.Id)
+	rel, _ := form.dao.FindFirstExternalAuthByExpr(dbx.HashExp{
+		"collectionId": form.collection.Id,
+		"provider":     form.Provider,
+		"providerId":   authUser.Id,
+	})
 	switch {
 	case rel != nil:
 		authRecord, err = form.dao.FindRecordById(form.collection.Id, rel.RecordId)
@@ -216,15 +226,11 @@ func (form *RecordOAuth2Login) submit(data *RecordOAuth2LoginData) error {
 			// load custom data
 			createForm.LoadData(form.CreateData)
 
-			// load the OAuth2 profile data as fallback
-			if createForm.Email == "" {
-				createForm.Email = data.OAuth2User.Email
-			}
-			createForm.Verified = false
-			if createForm.Email == data.OAuth2User.Email {
-				// mark as verified as long as it matches the OAuth2 data (even if the email is empty)
-				createForm.Verified = true
-			}
+			// load the OAuth2 user data
+			createForm.Email = data.OAuth2User.Email
+			createForm.Verified = true // mark as verified as long as it matches the OAuth2 data (even if the email is empty)
+
+			// generate a random password if not explicitly set
 			if createForm.Password == "" {
 				createForm.Password = security.RandomString(30)
 				createForm.PasswordConfirm = createForm.Password
@@ -241,6 +247,19 @@ func (form *RecordOAuth2Login) submit(data *RecordOAuth2LoginData) error {
 				return err
 			}
 		} else {
+			isLoggedAuthRecord := form.loggedAuthRecord != nil &&
+				form.loggedAuthRecord.Id == data.Record.Id &&
+				form.loggedAuthRecord.Collection().Id == data.Record.Collection().Id
+
+			// set random password for users with unverified email
+			// (this is in case a malicious actor has registered via password using the user email)
+			if !isLoggedAuthRecord && data.Record.Email() != "" && !data.Record.Verified() {
+				data.Record.SetPassword(security.RandomString(30))
+				if err := txDao.SaveRecord(data.Record); err != nil {
+					return err
+				}
+			}
+
 			// update the existing auth record empty email if the data.OAuth2User has one
 			// (this is in case previously the auth record was created
 			// with an OAuth2 provider that didn't return an email address)

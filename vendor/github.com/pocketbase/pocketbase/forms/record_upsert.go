@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -25,7 +25,7 @@ import (
 )
 
 // username value regex pattern
-var usernameRegex = regexp.MustCompile(`^[\w][\w\.]*$`)
+var usernameRegex = regexp.MustCompile(`^[\w][\w\.\-]*$`)
 
 // RecordUpsert is a [models.Record] upsert (create/update) form.
 type RecordUpsert struct {
@@ -117,7 +117,7 @@ func (form *RecordUpsert) getContentType(r *http.Request) string {
 	return t
 }
 
-func (form *RecordUpsert) extractRequestInfo(
+func (form *RecordUpsert) extractRequestData(
 	r *http.Request,
 	keyPrefix string,
 ) (map[string]any, map[string][]*filesystem.File, error) {
@@ -165,7 +165,7 @@ func (form *RecordUpsert) extractMultipartFormData(
 
 	data := map[string]any{}
 	filesToUpload := map[string][]*filesystem.File{}
-	arrayValueSupportTypes := schema.ArraybleFieldTypes()
+	arraybleFieldTypes := schema.ArraybleFieldTypes()
 
 	for fullKey, values := range r.PostForm {
 		key := fullKey
@@ -178,8 +178,18 @@ func (form *RecordUpsert) extractMultipartFormData(
 			continue
 		}
 
+		// special case for multipart json encoded fields
+		if key == rest.MultipartJsonKey {
+			for _, v := range values {
+				if err := json.Unmarshal([]byte(v), &data); err != nil {
+					form.app.Logger().Debug("Failed to decode @json value into the data map", "error", err, "value", v)
+				}
+			}
+			continue
+		}
+
 		field := form.record.Collection().Schema.GetFieldByName(key)
-		if field != nil && list.ExistInSlice(field.Type, arrayValueSupportTypes) {
+		if field != nil && list.ExistInSlice(field.Type, arraybleFieldTypes) {
 			data[key] = values
 		} else {
 			data[key] = values[0]
@@ -200,8 +210,12 @@ func (form *RecordUpsert) extractMultipartFormData(
 
 		files, err := rest.FindUploadedFiles(r, fullKey)
 		if err != nil || len(files) == 0 {
-			if err != nil && err != http.ErrMissingFile && form.app.IsDebug() {
-				log.Printf("%q uploaded file error: %v\n", fullKey, err)
+			if err != nil && err != http.ErrMissingFile {
+				form.app.Logger().Debug(
+					"Uploaded file error",
+					slog.String("key", fullKey),
+					slog.String("error", err.Error()),
+				)
 			}
 
 			// skip invalid or missing file(s)
@@ -219,12 +233,12 @@ func (form *RecordUpsert) extractMultipartFormData(
 //
 // File upload is supported only via multipart/form-data.
 func (form *RecordUpsert) LoadRequest(r *http.Request, keyPrefix string) error {
-	requestInfo, uploadedFiles, err := form.extractRequestInfo(r, keyPrefix)
+	requestData, uploadedFiles, err := form.extractRequestData(r, keyPrefix)
 	if err != nil {
 		return err
 	}
 
-	if err := form.LoadData(requestInfo); err != nil {
+	if err := form.LoadData(requestData); err != nil {
 		return err
 	}
 
@@ -309,10 +323,10 @@ func (form *RecordUpsert) AddFiles(key string, files ...*filesystem.File) error 
 // Example
 //
 //	// mark only only 2 files for removal
-//	form.AddFiles("documents", "file1_aw4bdrvws6.txt", "file2_xwbs36bafv.txt")
+//	form.RemoveFiles("documents", "file1_aw4bdrvws6.txt", "file2_xwbs36bafv.txt")
 //
 //	// mark all "documents" files for removal
-//	form.AddFiles("documents")
+//	form.RemoveFiles("documents")
 func (form *RecordUpsert) RemoveFiles(key string, toDelete ...string) error {
 	field := form.record.Collection().Schema.GetFieldByName(key)
 	if field == nil || field.Type != schema.FieldTypeFile {
@@ -349,39 +363,39 @@ func (form *RecordUpsert) RemoveFiles(key string, toDelete ...string) error {
 }
 
 // LoadData loads and normalizes the provided regular record data fields into the form.
-func (form *RecordUpsert) LoadData(requestInfo map[string]any) error {
+func (form *RecordUpsert) LoadData(requestData map[string]any) error {
 	// load base system fields
-	if v, ok := requestInfo[schema.FieldNameId]; ok {
+	if v, ok := requestData[schema.FieldNameId]; ok {
 		form.Id = cast.ToString(v)
 	}
 
 	// load auth system fields
 	if form.record.Collection().IsAuth() {
-		if v, ok := requestInfo[schema.FieldNameUsername]; ok {
+		if v, ok := requestData[schema.FieldNameUsername]; ok {
 			form.Username = cast.ToString(v)
 		}
-		if v, ok := requestInfo[schema.FieldNameEmail]; ok {
+		if v, ok := requestData[schema.FieldNameEmail]; ok {
 			form.Email = cast.ToString(v)
 		}
-		if v, ok := requestInfo[schema.FieldNameEmailVisibility]; ok {
+		if v, ok := requestData[schema.FieldNameEmailVisibility]; ok {
 			form.EmailVisibility = cast.ToBool(v)
 		}
-		if v, ok := requestInfo[schema.FieldNameVerified]; ok {
+		if v, ok := requestData[schema.FieldNameVerified]; ok {
 			form.Verified = cast.ToBool(v)
 		}
-		if v, ok := requestInfo["password"]; ok {
+		if v, ok := requestData["password"]; ok {
 			form.Password = cast.ToString(v)
 		}
-		if v, ok := requestInfo["passwordConfirm"]; ok {
+		if v, ok := requestData["passwordConfirm"]; ok {
 			form.PasswordConfirm = cast.ToString(v)
 		}
-		if v, ok := requestInfo["oldPassword"]; ok {
+		if v, ok := requestData["oldPassword"]; ok {
 			form.OldPassword = cast.ToString(v)
 		}
 	}
 
 	// replace modifiers (if any)
-	requestInfo = form.record.ReplaceModifers(requestInfo)
+	requestData = form.record.ReplaceModifers(requestData)
 
 	// create a shallow copy of form.data
 	var extendedData = make(map[string]any, len(form.data))
@@ -390,7 +404,7 @@ func (form *RecordUpsert) LoadData(requestInfo map[string]any) error {
 	}
 
 	// extend form.data with the request data
-	rawData, err := json.Marshal(requestInfo)
+	rawData, err := json.Marshal(requestData)
 	if err != nil {
 		return err
 	}
@@ -742,6 +756,8 @@ func (form *RecordUpsert) Submit(interceptors ...InterceptorFunc[*models.Record]
 
 		dao := form.dao.Clone()
 
+		var uploaded []string
+
 		// upload new files (if any)
 		//
 		// note: executed after the default BeforeCreateFunc and BeforeUpdateFunc hook actions
@@ -751,7 +767,9 @@ func (form *RecordUpsert) Submit(interceptors ...InterceptorFunc[*models.Record]
 		dao.BeforeCreateFunc = func(eventDao *daos.Dao, m models.Model, action func() error) error {
 			newAction := func() error {
 				if m.TableName() == form.record.TableName() && m.GetId() == form.record.GetId() {
-					if err := form.processFilesToUpload(); err != nil {
+					var err error
+					uploaded, err = form.processFilesToUpload()
+					if err != nil {
 						return err
 					}
 				}
@@ -769,7 +787,9 @@ func (form *RecordUpsert) Submit(interceptors ...InterceptorFunc[*models.Record]
 		dao.BeforeUpdateFunc = func(eventDao *daos.Dao, m models.Model, action func() error) error {
 			newAction := func() error {
 				if m.TableName() == form.record.TableName() && m.GetId() == form.record.GetId() {
-					if err := form.processFilesToUpload(); err != nil {
+					var err error
+					uploaded, err = form.processFilesToUpload()
+					if err != nil {
 						return err
 					}
 				}
@@ -787,6 +807,9 @@ func (form *RecordUpsert) Submit(interceptors ...InterceptorFunc[*models.Record]
 
 		// persist the record model
 		if err := dao.SaveRecord(form.record); err != nil {
+			// cleanup - try to delete only the successfully uploaded files
+			form.deleteFilesByNamesList(uploaded)
+
 			return form.prepareError(err)
 		}
 
@@ -794,38 +817,41 @@ func (form *RecordUpsert) Submit(interceptors ...InterceptorFunc[*models.Record]
 		//
 		// for now fail silently to avoid reupload when `form.Submit()`
 		// is called manually (aka. not from an api request)...
-		if err := form.processFilesToDelete(); err != nil && form.app.IsDebug() {
-			log.Println(err)
+		if err := form.processFilesToDelete(); err != nil {
+			form.app.Logger().Debug(
+				"Failed to delete old files",
+				slog.String("error", err.Error()),
+			)
 		}
 
 		return nil
 	}, interceptors...)
 }
 
-func (form *RecordUpsert) processFilesToUpload() error {
+func (form *RecordUpsert) processFilesToUpload() ([]string, error) {
 	if len(form.filesToUpload) == 0 {
-		return nil // no parsed file fields
+		return nil, nil // no parsed file fields
 	}
 
 	if !form.record.HasId() {
-		return errors.New("the record doesn't have an id")
+		return nil, errors.New("the record doesn't have an id")
 	}
 
-	fs, err := form.app.NewFilesystem()
+	fsys, err := form.app.NewFilesystem()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer fs.Close()
+	defer fsys.Close()
 
 	var uploadErrors []error // list of upload errors
-	var uploaded []string    // list of uploaded file paths
+	var uploaded []string    // list of uploaded file names
 
 	for fieldKey := range form.filesToUpload {
 		for i, file := range form.filesToUpload[fieldKey] {
 			path := form.record.BaseFilesPath() + "/" + file.Name
-			if err := fs.UploadFile(file, path); err == nil {
+			if err := fsys.UploadFile(file, path); err == nil {
 				// keep track of the already uploaded file
-				uploaded = append(uploaded, path)
+				uploaded = append(uploaded, file.Name)
 			} else {
 				// store the upload error
 				uploadErrors = append(uploadErrors, fmt.Errorf("file %d: %v", i, err))
@@ -837,10 +863,10 @@ func (form *RecordUpsert) processFilesToUpload() error {
 		// cleanup - try to delete the successfully uploaded files (if any)
 		form.deleteFilesByNamesList(uploaded)
 
-		return fmt.Errorf("failed to upload all files: %v", uploadErrors)
+		return nil, fmt.Errorf("failed to upload all files: %v", uploadErrors)
 	}
 
-	return nil
+	return uploaded, nil
 }
 
 func (form *RecordUpsert) processFilesToDelete() (err error) {
@@ -859,24 +885,28 @@ func (form *RecordUpsert) deleteFilesByNamesList(filenames []string) ([]string, 
 		return filenames, errors.New("the record doesn't have an id")
 	}
 
-	fs, err := form.app.NewFilesystem()
+	isNew := form.record.IsNew()
+
+	baseDir := form.record.BaseFilesPath()
+
+	fsys, err := form.app.NewFilesystem()
 	if err != nil {
 		return filenames, err
 	}
-	defer fs.Close()
+	defer fsys.Close()
 
 	var deleteErrors []error
 
 	for i := len(filenames) - 1; i >= 0; i-- {
 		filename := filenames[i]
-		path := form.record.BaseFilesPath() + "/" + filename
+		path := baseDir + "/" + filename
 
-		if err := fs.Delete(path); err == nil {
+		if err := fsys.Delete(path); err == nil {
 			// remove the deleted file from the list
 			filenames = append(filenames[:i], filenames[i+1:]...)
 
 			// try to delete the related file thumbs (if any)
-			fs.DeletePrefix(form.record.BaseFilesPath() + "/thumbs_" + filename + "/")
+			fsys.DeletePrefix(baseDir + "/thumbs_" + filename + "/")
 		} else {
 			// store the delete error
 			deleteErrors = append(deleteErrors, fmt.Errorf("file %d: %v", i, err))
@@ -885,6 +915,11 @@ func (form *RecordUpsert) deleteFilesByNamesList(filenames []string) ([]string, 
 
 	if len(deleteErrors) > 0 {
 		return filenames, fmt.Errorf("failed to delete all files: %v", deleteErrors)
+	}
+
+	// cleanup empty dir for new records if there are no other files
+	if isNew && fsys.IsEmptyDir(baseDir) {
+		_ = fsys.Delete(baseDir)
 	}
 
 	return filenames, nil

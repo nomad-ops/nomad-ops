@@ -1,6 +1,7 @@
 package pocketbase
 
 import (
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -31,7 +32,7 @@ type appWrapper struct {
 type PocketBase struct {
 	*appWrapper
 
-	debugFlag         bool
+	devFlag           bool
 	dataDirFlag       string
 	encryptionEnvFlag string
 	hideStartBanner   bool
@@ -43,7 +44,7 @@ type PocketBase struct {
 // Config is the PocketBase initialization config struct.
 type Config struct {
 	// optional default values for the console flags
-	DefaultDebug         bool
+	DefaultDev           bool
 	DefaultDataDir       string // if not set, it will fallback to "./pb_data"
 	DefaultEncryptionEnv string
 
@@ -69,7 +70,7 @@ func New() *PocketBase {
 	_, isUsingGoRun := inspectRuntime()
 
 	return NewWithConfig(Config{
-		DefaultDebug: isUsingGoRun,
+		DefaultDev: isUsingGoRun,
 	})
 }
 
@@ -100,11 +101,14 @@ func NewWithConfig(config Config) *PocketBase {
 				DisableDefaultCmd: true,
 			},
 		},
-		debugFlag:         config.DefaultDebug,
+		devFlag:           config.DefaultDev,
 		dataDirFlag:       config.DefaultDataDir,
 		encryptionEnvFlag: config.DefaultEncryptionEnv,
 		hideStartBanner:   config.HideStartBanner,
 	}
+
+	// replace with a colored stderr writer
+	pb.RootCmd.SetErr(newErrWriter())
 
 	// parse base flags
 	// (errors are ignored, since the full flags parsing happens on Execute())
@@ -112,9 +116,9 @@ func NewWithConfig(config Config) *PocketBase {
 
 	// initialize the app instance
 	pb.appWrapper = &appWrapper{core.NewBaseApp(core.BaseAppConfig{
+		IsDev:            pb.devFlag,
 		DataDir:          pb.dataDirFlag,
 		EncryptionEnv:    pb.encryptionEnvFlag,
-		IsDebug:          pb.debugFlag,
 		DataMaxOpenConns: config.DataMaxOpenConns,
 		DataMaxIdleConns: config.DataMaxIdleConns,
 		LogsMaxOpenConns: config.LogsMaxOpenConns,
@@ -156,26 +160,25 @@ func (pb *PocketBase) Execute() error {
 		sigch := make(chan os.Signal, 1)
 		signal.Notify(sigch, os.Interrupt, syscall.SIGTERM)
 		<-sigch
+
 		done <- true
 	}()
 
 	// execute the root command
 	go func() {
-		if err := pb.RootCmd.Execute(); err != nil {
-			// @todo replace with db log once generalized logs are added
-			// and maybe consider reorganizing the code to return os.Exit(1)
-			// (note may need to update the existing commands to not silence errors)
-			color.Red(err.Error())
-		}
+		// note: leave to the commands to decide whether to print their error
+		pb.RootCmd.Execute()
 
 		done <- true
 	}()
 
 	<-done
 
-	// trigger app cleanups
+	// trigger cleanups
 	return pb.OnTerminate().Trigger(&core.TerminateEvent{
 		App: pb,
+	}, func(e *core.TerminateEvent) error {
+		return e.App.ResetBootstrapState()
 	})
 }
 
@@ -197,10 +200,10 @@ func (pb *PocketBase) eagerParseFlags(config *Config) error {
 	)
 
 	pb.RootCmd.PersistentFlags().BoolVar(
-		&pb.debugFlag,
-		"debug",
-		config.DefaultDebug,
-		"enable debug mode, aka. showing more detailed logs",
+		&pb.devFlag,
+		"dev",
+		config.DefaultDev,
+		"enable dev mode, aka. printing logs and sql statements to the console",
 	)
 
 	return pb.RootCmd.ParseFlags(os.Args[1:])
@@ -261,4 +264,26 @@ func inspectRuntime() (baseDir string, withGoRun bool) {
 		baseDir = filepath.Dir(os.Args[0])
 	}
 	return
+}
+
+// newErrWriter returns a red colored stderr writter.
+func newErrWriter() *coloredWriter {
+	return &coloredWriter{
+		w: os.Stderr,
+		c: color.New(color.FgRed),
+	}
+}
+
+// coloredWriter is a small wrapper struct to construct a [color.Color] writter.
+type coloredWriter struct {
+	w io.Writer
+	c *color.Color
+}
+
+// Write writes the p bytes using the colored writer.
+func (colored *coloredWriter) Write(p []byte) (n int, err error) {
+	colored.c.SetWriter(colored.w)
+	defer colored.c.UnsetWriter(colored.w)
+
+	return colored.c.Print(string(p))
 }

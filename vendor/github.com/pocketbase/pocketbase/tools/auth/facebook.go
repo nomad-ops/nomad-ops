@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/facebook"
 )
@@ -21,11 +22,13 @@ type Facebook struct {
 // NewFacebookProvider creates new Facebook provider instance with some defaults.
 func NewFacebookProvider() *Facebook {
 	return &Facebook{&baseProvider{
-		ctx:        context.Background(),
-		scopes:     []string{"email"},
-		authUrl:    facebook.Endpoint.AuthURL,
-		tokenUrl:   facebook.Endpoint.TokenURL,
-		userApiUrl: "https://graph.facebook.com/me?fields=name,email,picture.type(large)",
+		ctx:         context.Background(),
+		displayName: "Facebook",
+		pkce:        true,
+		scopes:      []string{"email"},
+		authUrl:     facebook.Endpoint.AuthURL,
+		tokenUrl:    facebook.Endpoint.TokenURL,
+		userApiUrl:  "https://graph.facebook.com/me?fields=name,email,picture.type(large)",
 	}}
 }
 
@@ -64,6 +67,8 @@ func (p *Facebook) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	return user, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 )
 
@@ -20,7 +21,9 @@ type Twitter struct {
 // NewTwitterProvider creates new Twitter provider instance with some defaults.
 func NewTwitterProvider() *Twitter {
 	return &Twitter{&baseProvider{
-		ctx: context.Background(),
+		ctx:         context.Background(),
+		displayName: "Twitter",
+		pkce:        true,
 		scopes: []string{
 			"users.read",
 
@@ -73,6 +76,8 @@ func (p *Twitter) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	return user, nil
 }

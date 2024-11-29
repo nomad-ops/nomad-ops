@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 )
 
@@ -20,7 +21,9 @@ type OIDC struct {
 // NewOIDCProvider creates new OpenID Connect (OIDC) provider instance with some defaults.
 func NewOIDCProvider() *OIDC {
 	return &OIDC{&baseProvider{
-		ctx: context.Background(),
+		ctx:         context.Background(),
+		displayName: "OIDC",
+		pkce:        true,
 		scopes: []string{
 			"openid", // minimal requirement to return the id
 			"email",
@@ -64,6 +67,8 @@ func (p *OIDC) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	if extracted.EmailVerified {
 		user.Email = extracted.Email

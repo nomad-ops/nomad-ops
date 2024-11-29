@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/instagram"
 )
@@ -21,11 +22,13 @@ type Instagram struct {
 // NewInstagramProvider creates new Instagram provider instance with some defaults.
 func NewInstagramProvider() *Instagram {
 	return &Instagram{&baseProvider{
-		ctx:        context.Background(),
-		scopes:     []string{"user_profile"},
-		authUrl:    instagram.Endpoint.AuthURL,
-		tokenUrl:   instagram.Endpoint.TokenURL,
-		userApiUrl: "https://graph.instagram.com/me?fields=id,username,account_type",
+		ctx:         context.Background(),
+		displayName: "Instagram",
+		pkce:        true,
+		scopes:      []string{"user_profile"},
+		authUrl:     instagram.Endpoint.AuthURL,
+		tokenUrl:    instagram.Endpoint.TokenURL,
+		userApiUrl:  "https://graph.instagram.com/me?fields=id,username,account_type",
 	}}
 }
 
@@ -58,6 +61,8 @@ func (p *Instagram) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	return user, nil
 }

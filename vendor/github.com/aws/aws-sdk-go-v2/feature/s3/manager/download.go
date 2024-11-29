@@ -183,7 +183,10 @@ func (d Downloader) Download(ctx context.Context, w io.WriterAt, input *s3.GetOb
 	// Copy ClientOptions
 	clientOptions := make([]func(*s3.Options), 0, len(impl.cfg.ClientOptions)+1)
 	clientOptions = append(clientOptions, func(o *s3.Options) {
-		o.APIOptions = append(o.APIOptions, middleware.AddSDKAgentKey(middleware.FeatureMetadata, userAgentKey))
+		o.APIOptions = append(o.APIOptions,
+			middleware.AddSDKAgentKey(middleware.FeatureMetadata, userAgentKey),
+			addFeatureUserAgent, // yes, there are two of these
+		)
 	})
 	clientOptions = append(clientOptions, impl.cfg.ClientOptions...)
 	impl.cfg.ClientOptions = clientOptions
@@ -436,8 +439,8 @@ func (d *downloader) setTotalBytes(resp *s3.GetObjectOutput) {
 	if resp.ContentRange == nil {
 		// ContentRange is nil when the full file contents is provided, and
 		// is not chunked. Use ContentLength instead.
-		if resp.ContentLength > 0 {
-			d.totalBytes = resp.ContentLength
+		if aws.ToInt64(resp.ContentLength) > 0 {
+			d.totalBytes = aws.ToInt64(resp.ContentLength)
 			return
 		}
 	} else {

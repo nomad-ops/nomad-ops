@@ -2,12 +2,14 @@ package filesystem
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strings"
 
@@ -23,12 +25,12 @@ type FileReader interface {
 
 // File defines a single file [io.ReadSeekCloser] resource.
 //
-// The file could be from a local path, multipipart/formdata header, etc.
+// The file could be from a local path, multipart/form-data header, etc.
 type File struct {
+	Reader       FileReader
 	Name         string
 	OriginalName string
 	Size         int64
-	Reader       FileReader
 }
 
 // NewFileFromPath creates a new File instance from the provided local file path.
@@ -65,7 +67,7 @@ func NewFileFromBytes(b []byte, name string) (*File, error) {
 	return f, nil
 }
 
-// NewFileFromMultipart creates a new File instace from the provided multipart header.
+// NewFileFromMultipart creates a new File from the provided multipart header.
 func NewFileFromMultipart(mh *multipart.FileHeader) (*File, error) {
 	f := &File{}
 
@@ -75,6 +77,40 @@ func NewFileFromMultipart(mh *multipart.FileHeader) (*File, error) {
 	f.Name = normalizeName(f.Reader, f.OriginalName)
 
 	return f, nil
+}
+
+// NewFileFromUrl creates a new File from the provided url by
+// downloading the resource and load it as BytesReader.
+//
+// Example
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+//	defer cancel()
+//
+//	file, err := filesystem.NewFileFromUrl(ctx, "https://example.com/image.png")
+func NewFileFromUrl(ctx context.Context, url string) (*File, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode < 200 || res.StatusCode > 399 {
+		return nil, fmt.Errorf("failed to download url %s (%d)", url, res.StatusCode)
+	}
+
+	var buf bytes.Buffer
+
+	if _, err = io.Copy(&buf, res.Body); err != nil {
+		return nil, err
+	}
+
+	return NewFileFromBytes(buf.Bytes(), path.Base(url))
 }
 
 // -------------------------------------------------------------------
@@ -135,11 +171,15 @@ var extInvalidCharsRegex = regexp.MustCompile(`[^\w\.\*\-\+\=\#]+`)
 func normalizeName(fr FileReader, name string) string {
 	// extension
 	// ---
-	originalExt := filepath.Ext(name)
+	originalExt := extractExtension(name)
 	cleanExt := extInvalidCharsRegex.ReplaceAllString(originalExt, "")
 	if cleanExt == "" {
 		// try to detect the extension from the file content
 		cleanExt, _ = detectExtension(fr)
+	}
+	if extLength := len(cleanExt); extLength > 20 {
+		// keep only the last 20 characters (it is multibyte safe after the regex replace)
+		cleanExt = "." + cleanExt[extLength-20:]
 	}
 
 	// name
@@ -161,15 +201,41 @@ func normalizeName(fr FileReader, name string) string {
 	)
 }
 
+// extractExtension extracts the extension (with leading dot) from name.
+//
+// This differ from filepath.Ext() by supporting double extensions (eg. ".tar.gz").
+//
+// Returns an empty string if no match is found.
+//
+// Example:
+// extractExtension("test.txt")      // .txt
+// extractExtension("test.tar.gz")   // .tar.gz
+// extractExtension("test.a.tar.gz") // .tar.gz
+func extractExtension(name string) string {
+	primaryDot := strings.LastIndex(name, ".")
+
+	if primaryDot == -1 {
+		return ""
+	}
+
+	// look for secondary extension
+	secondaryDot := strings.LastIndex(name[:primaryDot], ".")
+	if secondaryDot >= 0 {
+		return name[secondaryDot:]
+	}
+
+	return name[primaryDot:]
+}
+
+// detectExtension tries to detect the extension from file mime type.
 func detectExtension(fr FileReader) (string, error) {
-	// try to detect the extension from the mime type
 	r, err := fr.Open()
 	if err != nil {
 		return "", err
 	}
 	defer r.Close()
 
-	mt, _ := mimetype.DetectReader(r)
+	mt, err := mimetype.DetectReader(r)
 	if err != nil {
 		return "", err
 	}

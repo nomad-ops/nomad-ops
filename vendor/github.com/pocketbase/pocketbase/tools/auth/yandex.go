@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/yandex"
 )
@@ -22,10 +24,13 @@ type Yandex struct {
 // Docs: https://yandex.ru/dev/id/doc/en/
 func NewYandexProvider() *Yandex {
 	return &Yandex{&baseProvider{
-		scopes:     []string{"login:email", "login:avatar", "login:info"},
-		authUrl:    yandex.Endpoint.AuthURL,
-		tokenUrl:   yandex.Endpoint.TokenURL,
-		userApiUrl: "https://login.yandex.ru/info",
+		ctx:         context.Background(),
+		displayName: "Yandex",
+		pkce:        true,
+		scopes:      []string{"login:email", "login:avatar", "login:info"},
+		authUrl:     yandex.Endpoint.AuthURL,
+		tokenUrl:    yandex.Endpoint.TokenURL,
+		userApiUrl:  "https://login.yandex.ru/info",
 	}}
 }
 
@@ -64,6 +69,8 @@ func (p *Yandex) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	if !extracted.IsAvatarEmpty {
 		user.AvatarUrl = "https://avatars.yandex.net/get-yapic/" + extracted.AvatarId + "/islands-200"

@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"log"
+	"errors"
 	"net/http"
 
 	"github.com/pocketbase/pocketbase/apis"
@@ -17,10 +17,11 @@ func NewServeCommand(app core.App, showStartBanner bool) *cobra.Command {
 	var httpsAddr string
 
 	command := &cobra.Command{
-		Use:   "serve [domain(s)]",
-		Args:  cobra.ArbitraryArgs,
-		Short: "Starts the web server (default to 127.0.0.1:8090 if no domain is specified)",
-		Run: func(command *cobra.Command, args []string) {
+		Use:          "serve [domain(s)]",
+		Args:         cobra.ArbitraryArgs,
+		Short:        "Starts the web server (default to 127.0.0.1:8090 if no domain is specified)",
+		SilenceUsage: true,
+		RunE: func(command *cobra.Command, args []string) error {
 			// set default listener addresses if at least one domain is specified
 			if len(args) > 0 {
 				if httpAddr == "" {
@@ -43,9 +44,11 @@ func NewServeCommand(app core.App, showStartBanner bool) *cobra.Command {
 				CertificateDomains: args,
 			})
 
-			if err != http.ErrServerClosed {
-				log.Fatalln(err)
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
 			}
+
+			return err
 		},
 	}
 

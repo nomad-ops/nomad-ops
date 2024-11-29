@@ -46,9 +46,9 @@ func (dao *Dao) FindAdminByEmail(email string) (*models.Admin, error) {
 	return model, nil
 }
 
-// FindAdminByToken finds the admin associated with the provided JWT token.
+// FindAdminByToken finds the admin associated with the provided JWT.
 //
-// Returns an error if the JWT token is invalid or expired.
+// Returns an error if the JWT is invalid or expired.
 func (dao *Dao) FindAdminByToken(token string, baseTokenKey string) (*models.Admin, error) {
 	// @todo consider caching the unverified claims
 	unverifiedClaims, err := security.ParseUnverifiedJWT(token)
@@ -59,7 +59,7 @@ func (dao *Dao) FindAdminByToken(token string, baseTokenKey string) (*models.Adm
 	// check required claims
 	id, _ := unverifiedClaims["id"].(string)
 	if id == "" {
-		return nil, errors.New("Missing or invalid token claims.")
+		return nil, errors.New("missing or invalid token claims")
 	}
 
 	admin, err := dao.FindAdminById(id)
@@ -116,7 +116,7 @@ func (dao *Dao) DeleteAdmin(admin *models.Admin) error {
 	}
 
 	if total == 1 {
-		return errors.New("You cannot delete the only existing admin.")
+		return errors.New("you cannot delete the only existing admin")
 	}
 
 	return dao.Delete(admin)

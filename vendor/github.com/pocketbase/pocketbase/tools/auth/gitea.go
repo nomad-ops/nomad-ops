@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strconv"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 )
 
@@ -21,11 +22,13 @@ type Gitea struct {
 // NewGiteaProvider creates new Gitea provider instance with some defaults.
 func NewGiteaProvider() *Gitea {
 	return &Gitea{&baseProvider{
-		ctx:        context.Background(),
-		scopes:     []string{"read:user", "user:email"},
-		authUrl:    "https://gitea.com/login/oauth/authorize",
-		tokenUrl:   "https://gitea.com/login/oauth/access_token",
-		userApiUrl: "https://gitea.com/api/v1/user",
+		ctx:         context.Background(),
+		displayName: "Gitea",
+		pkce:        true,
+		scopes:      []string{"read:user", "user:email"},
+		authUrl:     "https://gitea.com/login/oauth/authorize",
+		tokenUrl:    "https://gitea.com/login/oauth/access_token",
+		userApiUrl:  "https://gitea.com/api/v1/user",
 	}}
 }
 
@@ -64,6 +67,8 @@ func (p *Gitea) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	return user, nil
 }

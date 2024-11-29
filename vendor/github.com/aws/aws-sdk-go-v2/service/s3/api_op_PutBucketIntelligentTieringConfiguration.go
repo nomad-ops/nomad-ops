@@ -4,50 +4,68 @@ package s3
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
-	"github.com/aws/aws-sdk-go-v2/internal/v4a"
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
+	"github.com/aws/smithy-go/ptr"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+// This operation is not supported by directory buckets.
+//
 // Puts a S3 Intelligent-Tiering configuration to the specified bucket. You can
-// have up to 1,000 S3 Intelligent-Tiering configurations per bucket. The S3
-// Intelligent-Tiering storage class is designed to optimize storage costs by
-// automatically moving data to the most cost-effective storage access tier,
+// have up to 1,000 S3 Intelligent-Tiering configurations per bucket.
+//
+// The S3 Intelligent-Tiering storage class is designed to optimize storage costs
+// by automatically moving data to the most cost-effective storage access tier,
 // without performance impact or operational overhead. S3 Intelligent-Tiering
 // delivers automatic cost savings in three low latency and high throughput access
 // tiers. To get the lowest storage cost on data that can be accessed in minutes to
-// hours, you can choose to activate additional archiving capabilities. The S3
-// Intelligent-Tiering storage class is the ideal storage class for data with
-// unknown, changing, or unpredictable access patterns, independent of object size
-// or retention period. If the size of an object is less than 128 KB, it is not
-// monitored and not eligible for auto-tiering. Smaller objects can be stored, but
-// they are always charged at the Frequent Access tier rates in the S3
-// Intelligent-Tiering storage class. For more information, see Storage class for
-// automatically optimizing frequently and infrequently accessed objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html#sc-dynamic-data-access)
-// . Operations related to PutBucketIntelligentTieringConfiguration include:
-//   - DeleteBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketIntelligentTieringConfiguration.html)
-//   - GetBucketIntelligentTieringConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketIntelligentTieringConfiguration.html)
-//   - ListBucketIntelligentTieringConfigurations (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBucketIntelligentTieringConfigurations.html)
+// hours, you can choose to activate additional archiving capabilities.
+//
+// The S3 Intelligent-Tiering storage class is the ideal storage class for data
+// with unknown, changing, or unpredictable access patterns, independent of object
+// size or retention period. If the size of an object is less than 128 KB, it is
+// not monitored and not eligible for auto-tiering. Smaller objects can be stored,
+// but they are always charged at the Frequent Access tier rates in the S3
+// Intelligent-Tiering storage class.
+//
+// For more information, see [Storage class for automatically optimizing frequently and infrequently accessed objects].
+//
+// Operations related to PutBucketIntelligentTieringConfiguration include:
+//
+// [DeleteBucketIntelligentTieringConfiguration]
+//
+// [GetBucketIntelligentTieringConfiguration]
+//
+// [ListBucketIntelligentTieringConfigurations]
 //
 // You only need S3 Intelligent-Tiering enabled on a bucket if you want to
 // automatically move objects stored in the S3 Intelligent-Tiering storage class to
 // the Archive Access or Deep Archive Access tier.
-// PutBucketIntelligentTieringConfiguration has the following special errors: HTTP
-// 400 Bad Request Error Code: InvalidArgument Cause: Invalid Argument HTTP 400 Bad
-// Request Error Code: TooManyConfigurations Cause: You are attempting to create a
-// new configuration but have already reached the 1,000-configuration limit. HTTP
-// 403 Forbidden Error Cause: You are not the owner of the specified bucket, or you
-// do not have the s3:PutIntelligentTieringConfiguration bucket permission to set
-// the configuration on the bucket.
+//
+// PutBucketIntelligentTieringConfiguration has the following special errors:
+//
+// HTTP 400 Bad Request Error  Code: InvalidArgument
+//
+// Cause: Invalid Argument
+//
+// HTTP 400 Bad Request Error  Code: TooManyConfigurations
+//
+// Cause: You are attempting to create a new configuration but have already
+// reached the 1,000-configuration limit.
+//
+// HTTP 403 Forbidden Error  Cause: You are not the owner of the specified bucket,
+// or you do not have the s3:PutIntelligentTieringConfiguration bucket permission
+// to set the configuration on the bucket.
+//
+// [ListBucketIntelligentTieringConfigurations]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBucketIntelligentTieringConfigurations.html
+// [GetBucketIntelligentTieringConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketIntelligentTieringConfiguration.html
+// [Storage class for automatically optimizing frequently and infrequently accessed objects]: https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html#sc-dynamic-data-access
+// [DeleteBucketIntelligentTieringConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketIntelligentTieringConfiguration.html
 func (c *Client) PutBucketIntelligentTieringConfiguration(ctx context.Context, params *PutBucketIntelligentTieringConfigurationInput, optFns ...func(*Options)) (*PutBucketIntelligentTieringConfigurationOutput, error) {
 	if params == nil {
 		params = &PutBucketIntelligentTieringConfigurationInput{}
@@ -84,6 +102,12 @@ type PutBucketIntelligentTieringConfigurationInput struct {
 	noSmithyDocumentSerde
 }
 
+func (in *PutBucketIntelligentTieringConfigurationInput) bindEndpointParams(p *EndpointParameters) {
+
+	p.Bucket = in.Bucket
+	p.UseS3ExpressControlEndpoint = ptr.Bool(true)
+}
+
 type PutBucketIntelligentTieringConfigurationOutput struct {
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -92,6 +116,9 @@ type PutBucketIntelligentTieringConfigurationOutput struct {
 }
 
 func (c *Client) addOperationPutBucketIntelligentTieringConfigurationMiddlewares(stack *middleware.Stack, options Options) (err error) {
+	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+		return err
+	}
 	err = stack.Serialize.Add(&awsRestxml_serializeOpPutBucketIntelligentTieringConfiguration{}, middleware.After)
 	if err != nil {
 		return err
@@ -100,34 +127,35 @@ func (c *Client) addOperationPutBucketIntelligentTieringConfigurationMiddlewares
 	if err != nil {
 		return err
 	}
+	if err := addProtocolFinalizerMiddlewares(stack, options, "PutBucketIntelligentTieringConfiguration"); err != nil {
+		return fmt.Errorf("add protocol finalizers: %v", err)
+	}
+
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
 		return err
 	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
+	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
+	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = v4.AddComputePayloadSHA256Middleware(stack); err != nil {
+	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRetry(stack, options); err != nil {
 		return err
 	}
-	if err = addHTTPSignerV4Middleware(stack, options); err != nil {
+	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
-		return err
-	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
 	if err = addClientUserAgent(stack, options); err != nil {
@@ -139,10 +167,19 @@ func (c *Client) addOperationPutBucketIntelligentTieringConfigurationMiddlewares
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = swapWithCustomHTTPSignerMiddleware(stack, options); err != nil {
+	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addPutBucketIntelligentTieringConfigurationResolveEndpointMiddleware(stack, options); err != nil {
+	if err = addPutBucketContextMiddleware(stack); err != nil {
+		return err
+	}
+	if err = addTimeOffsetBuild(stack, c); err != nil {
+		return err
+	}
+	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
+	if err = addIsExpressUserAgent(stack); err != nil {
 		return err
 	}
 	if err = addOpPutBucketIntelligentTieringConfigurationValidationMiddleware(stack); err != nil {
@@ -154,7 +191,7 @@ func (c *Client) addOperationPutBucketIntelligentTieringConfigurationMiddlewares
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
+	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketIntelligentTieringConfigurationUpdateEndpoint(stack, options); err != nil {
@@ -172,7 +209,7 @@ func (c *Client) addOperationPutBucketIntelligentTieringConfigurationMiddlewares
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
-	if err = addendpointDisableHTTPSMiddleware(stack, options); err != nil {
+	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
@@ -192,7 +229,6 @@ func newServiceMetadataMiddleware_opPutBucketIntelligentTieringConfiguration(reg
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		SigningName:   "s3",
 		OperationName: "PutBucketIntelligentTieringConfiguration",
 	}
 }
@@ -221,140 +257,4 @@ func addPutBucketIntelligentTieringConfigurationUpdateEndpoint(stack *middleware
 		UseARNRegion:                   options.UseARNRegion,
 		DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
 	})
-}
-
-type opPutBucketIntelligentTieringConfigurationResolveEndpointMiddleware struct {
-	EndpointResolver EndpointResolverV2
-	BuiltInResolver  builtInParameterResolver
-}
-
-func (*opPutBucketIntelligentTieringConfigurationResolveEndpointMiddleware) ID() string {
-	return "ResolveEndpointV2"
-}
-
-func (m *opPutBucketIntelligentTieringConfigurationResolveEndpointMiddleware) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
-	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
-) {
-	if awsmiddleware.GetRequiresLegacyEndpoints(ctx) {
-		return next.HandleSerialize(ctx, in)
-	}
-
-	req, ok := in.Request.(*smithyhttp.Request)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	input, ok := in.Parameters.(*PutBucketIntelligentTieringConfigurationInput)
-	if !ok {
-		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
-	}
-
-	if m.EndpointResolver == nil {
-		return out, metadata, fmt.Errorf("expected endpoint resolver to not be nil")
-	}
-
-	params := EndpointParameters{}
-
-	m.BuiltInResolver.ResolveBuiltIns(&params)
-
-	params.Bucket = input.Bucket
-
-	var resolvedEndpoint smithyendpoints.Endpoint
-	resolvedEndpoint, err = m.EndpointResolver.ResolveEndpoint(ctx, params)
-	if err != nil {
-		return out, metadata, fmt.Errorf("failed to resolve service endpoint, %w", err)
-	}
-
-	req.URL = &resolvedEndpoint.URI
-
-	for k := range resolvedEndpoint.Headers {
-		req.Header.Set(
-			k,
-			resolvedEndpoint.Headers.Get(k),
-		)
-	}
-
-	authSchemes, err := internalauth.GetAuthenticationSchemes(&resolvedEndpoint.Properties)
-	if err != nil {
-		var nfe *internalauth.NoAuthenticationSchemesFoundError
-		if errors.As(err, &nfe) {
-			// if no auth scheme is found, default to sigv4
-			signingName := "s3"
-			signingRegion := m.BuiltInResolver.(*builtInResolver).Region
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			ctx = s3cust.SetSignerVersion(ctx, internalauth.SigV4)
-		}
-		var ue *internalauth.UnSupportedAuthenticationSchemeSpecifiedError
-		if errors.As(err, &ue) {
-			return out, metadata, fmt.Errorf(
-				"This operation requests signer version(s) %v but the client only supports %v",
-				ue.UnsupportedSchemes,
-				internalauth.SupportedSchemes,
-			)
-		}
-	}
-
-	for _, authScheme := range authSchemes {
-		switch authScheme.(type) {
-		case *internalauth.AuthenticationSchemeV4:
-			v4Scheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4)
-			var signingName, signingRegion string
-			if v4Scheme.SigningName == nil {
-				signingName = "s3"
-			} else {
-				signingName = *v4Scheme.SigningName
-			}
-			if v4Scheme.SigningRegion == nil {
-				signingRegion = m.BuiltInResolver.(*builtInResolver).Region
-			} else {
-				signingRegion = *v4Scheme.SigningRegion
-			}
-			if v4Scheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4Scheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, signingName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
-			ctx = s3cust.SetSignerVersion(ctx, v4Scheme.Name)
-			break
-		case *internalauth.AuthenticationSchemeV4A:
-			v4aScheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4A)
-			if v4aScheme.SigningName == nil {
-				v4aScheme.SigningName = aws.String("s3")
-			}
-			if v4aScheme.DisableDoubleEncoding != nil {
-				// The signer sets an equivalent value at client initialization time.
-				// Setting this context value will cause the signer to extract it
-				// and override the value set at client initialization time.
-				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4aScheme.DisableDoubleEncoding)
-			}
-			ctx = awsmiddleware.SetSigningName(ctx, *v4aScheme.SigningName)
-			ctx = awsmiddleware.SetSigningRegion(ctx, v4aScheme.SigningRegionSet[0])
-			ctx = s3cust.SetSignerVersion(ctx, v4a.Version)
-			break
-		case *internalauth.AuthenticationSchemeNone:
-			break
-		}
-	}
-
-	return next.HandleSerialize(ctx, in)
-}
-
-func addPutBucketIntelligentTieringConfigurationResolveEndpointMiddleware(stack *middleware.Stack, options Options) error {
-	return stack.Serialize.Insert(&opPutBucketIntelligentTieringConfigurationResolveEndpointMiddleware{
-		EndpointResolver: options.EndpointResolverV2,
-		BuiltInResolver: &builtInResolver{
-			Region:                         options.Region,
-			UseFIPS:                        options.EndpointOptions.UseFIPSEndpoint,
-			UseDualStack:                   options.EndpointOptions.UseDualStackEndpoint,
-			Endpoint:                       options.BaseEndpoint,
-			ForcePathStyle:                 options.UsePathStyle,
-			Accelerate:                     options.UseAccelerate,
-			DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
-			UseArnRegion:                   options.UseARNRegion,
-		},
-	}, "ResolveEndpoint", middleware.After)
 }

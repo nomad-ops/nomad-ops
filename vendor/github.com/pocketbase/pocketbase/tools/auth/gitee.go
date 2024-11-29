@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/go-ozzo/ozzo-validation/v4/is"
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 )
 
@@ -23,11 +24,13 @@ type Gitee struct {
 // NewGiteeProvider creates new Gitee provider instance with some defaults.
 func NewGiteeProvider() *Gitee {
 	return &Gitee{&baseProvider{
-		ctx:        context.Background(),
-		scopes:     []string{"user_info", "emails"},
-		authUrl:    "https://gitee.com/oauth/authorize",
-		tokenUrl:   "https://gitee.com/oauth/token",
-		userApiUrl: "https://gitee.com/api/v5/user",
+		ctx:         context.Background(),
+		displayName: "Gitee",
+		pkce:        true,
+		scopes:      []string{"user_info", "emails"},
+		authUrl:     "https://gitee.com/oauth/authorize",
+		tokenUrl:    "https://gitee.com/oauth/token",
+		userApiUrl:  "https://gitee.com/api/v5/user",
 	}}
 }
 
@@ -65,6 +68,8 @@ func (p *Gitee) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	if extracted.Email != "" && is.EmailFormat.Validate(extracted.Email) == nil {
 		// valid public primary email

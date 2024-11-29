@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,7 +22,10 @@ import (
 	"github.com/pocketbase/pocketbase/tools/security"
 )
 
+// Deprecated: Replaced with StoreKeyActiveBackup.
 const CacheKeyActiveBackup string = "@activeBackup"
+
+const StoreKeyActiveBackup string = "@activeBackup"
 
 // CreateBackup creates a new backup of the current app pb_data directory.
 //
@@ -43,7 +46,7 @@ const CacheKeyActiveBackup string = "@activeBackup"
 //
 // Backups can be stored on S3 if it is configured in app.Settings().Backups.
 func (app *BaseApp) CreateBackup(ctx context.Context, name string) error {
-	if app.Cache().Has(CacheKeyActiveBackup) {
+	if app.Store().Has(StoreKeyActiveBackup) {
 		return errors.New("try again later - another backup/restore operation has already been started")
 	}
 
@@ -51,8 +54,8 @@ func (app *BaseApp) CreateBackup(ctx context.Context, name string) error {
 		name = app.generateBackupName("pb_backup_")
 	}
 
-	app.Cache().Set(CacheKeyActiveBackup, name)
-	defer app.Cache().Remove(CacheKeyActiveBackup)
+	app.Store().Set(StoreKeyActiveBackup, name)
+	defer app.Store().Remove(StoreKeyActiveBackup)
 
 	// root dir entries to exclude from the backup generation
 	exclude := []string{LocalBackupsDirName, LocalTempDirName}
@@ -69,9 +72,15 @@ func (app *BaseApp) CreateBackup(ctx context.Context, name string) error {
 	// Run in transaction to temporary block other writes (transactions uses the NonconcurrentDB connection).
 	// ---
 	tempPath := filepath.Join(localTempDir, "pb_backup_"+security.PseudorandomString(4))
-	createErr := app.Dao().RunInTransaction(func(txDao *daos.Dao) error {
-		// @todo consider experimenting with temp switching the readonly pragma after the db interface change
-		return archive.Create(app.DataDir(), tempPath, exclude...)
+	createErr := app.Dao().RunInTransaction(func(dataTXDao *daos.Dao) error {
+		return app.LogsDao().RunInTransaction(func(logsTXDao *daos.Dao) error {
+			// run manual checkpoint and truncate the WAL files
+			// (errors are ignored because it is not that important and the PRAGMA may not be supported by the used driver)
+			dataTXDao.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
+			logsTXDao.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
+
+			return archive.Create(app.DataDir(), tempPath, exclude...)
+		})
 	})
 	if createErr != nil {
 		return createErr
@@ -135,12 +144,12 @@ func (app *BaseApp) RestoreBackup(ctx context.Context, name string) error {
 		return errors.New("restore is not supported on windows")
 	}
 
-	if app.Cache().Has(CacheKeyActiveBackup) {
+	if app.Store().Has(StoreKeyActiveBackup) {
 		return errors.New("try again later - another backup/restore operation has already been started")
 	}
 
-	app.Cache().Set(CacheKeyActiveBackup, name)
-	defer app.Cache().Remove(CacheKeyActiveBackup)
+	app.Store().Set(StoreKeyActiveBackup, name)
+	defer app.Store().Remove(StoreKeyActiveBackup)
 
 	fsys, err := app.NewBackupsFilesystem()
 	if err != nil {
@@ -189,8 +198,12 @@ func (app *BaseApp) RestoreBackup(ctx context.Context, name string) error {
 
 	// remove the extracted zip file since we no longer need it
 	// (this is in case the app restarts and the defer calls are not called)
-	if err := os.Remove(tempZip.Name()); err != nil && app.IsDebug() {
-		log.Println(err)
+	if err := os.Remove(tempZip.Name()); err != nil {
+		app.Logger().Debug(
+			"[RestoreBackup] Failed to remove the temp zip backup file",
+			slog.String("file", tempZip.Name()),
+			slog.String("error", err.Error()),
+		)
 	}
 
 	// root dir entries to exclude from the backup restore
@@ -223,8 +236,8 @@ func (app *BaseApp) RestoreBackup(ctx context.Context, name string) error {
 
 	// restart the app
 	if err := app.Restart(); err != nil {
-		if err := revertDataDirChanges(); err != nil {
-			panic(err)
+		if revertErr := revertDataDirChanges(); revertErr != nil {
+			panic(revertErr)
 		}
 
 		return fmt.Errorf("failed to restart the app process: %w", err)
@@ -241,6 +254,16 @@ func (app *BaseApp) initAutobackupHooks() error {
 	loadJob := func() {
 		c.Stop()
 
+		// make sure that app.Settings() is always up to date
+		//
+		// @todo remove with the refactoring as core.App and daos.Dao will be one.
+		if err := app.RefreshSettings(); err != nil {
+			app.Logger().Debug(
+				"[Backup cron] Failed to get the latest app settings",
+				slog.String("error", err.Error()),
+			)
+		}
+
 		rawSchedule := app.Settings().Backups.Cron
 		if rawSchedule == "" || !isServe || !app.IsBootstrapped() {
 			return
@@ -251,9 +274,12 @@ func (app *BaseApp) initAutobackupHooks() error {
 
 			name := app.generateBackupName(autoPrefix)
 
-			if err := app.CreateBackup(context.Background(), name); err != nil && app.IsDebug() {
-				// @todo replace after logs generalization
-				log.Println(err)
+			if err := app.CreateBackup(context.Background(), name); err != nil {
+				app.Logger().Debug(
+					"[Backup cron] Failed to create backup",
+					slog.String("name", name),
+					slog.String("error", err.Error()),
+				)
 			}
 
 			maxKeep := app.Settings().Backups.CronMaxKeep
@@ -263,17 +289,21 @@ func (app *BaseApp) initAutobackupHooks() error {
 			}
 
 			fsys, err := app.NewBackupsFilesystem()
-			if err != nil && app.IsDebug() {
-				// @todo replace after logs generalization
-				log.Println(err)
+			if err != nil {
+				app.Logger().Debug(
+					"[Backup cron] Failed to initialize the backup filesystem",
+					slog.String("error", err.Error()),
+				)
 				return
 			}
 			defer fsys.Close()
 
 			files, err := fsys.List(autoPrefix)
-			if err != nil && app.IsDebug() {
-				// @todo replace after logs generalization
-				log.Println(err)
+			if err != nil {
+				app.Logger().Debug(
+					"[Backup cron] Failed to list autogenerated backups",
+					slog.String("error", err.Error()),
+				)
 				return
 			}
 
@@ -290,9 +320,12 @@ func (app *BaseApp) initAutobackupHooks() error {
 			toRemove := files[maxKeep:]
 
 			for _, f := range toRemove {
-				if err := fsys.Delete(f.Key); err != nil && app.IsDebug() {
-					// @todo replace after logs generalization
-					log.Println(err)
+				if err := fsys.Delete(f.Key); err != nil {
+					app.Logger().Debug(
+						"[Backup cron] Failed to remove old autogenerated backup",
+						slog.String("key", f.Key),
+						slog.String("error", err.Error()),
+					)
 				}
 			}
 		})

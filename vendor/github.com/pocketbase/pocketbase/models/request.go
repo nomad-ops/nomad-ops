@@ -8,9 +8,10 @@ var _ Model = (*Request)(nil)
 const (
 	RequestAuthGuest  = "guest"
 	RequestAuthAdmin  = "admin"
-	RequestAuthRecord = "auth_record"
+	RequestAuthRecord = "authRecord"
 )
 
+// Deprecated: Replaced by the Log model and will be removed in a future version.
 type Request struct {
 	BaseModel
 

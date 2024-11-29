@@ -64,12 +64,12 @@ type CollectionsFinder interface {
 type RecordFieldResolver struct {
 	dao               CollectionsFinder
 	baseCollection    *models.Collection
-	allowHiddenFields bool
-	allowedFields     []string
-	loadedCollections []*models.Collection
-	joins             []*join // we cannot use a map because the insertion order is not preserved
 	requestInfo       *models.RequestInfo
 	staticRequestInfo map[string]any
+	allowedFields     []string
+	loadedCollections []*models.Collection
+	joins             []*join
+	allowHiddenFields bool
 }
 
 // NewRecordFieldResolver creates and initializes a new `RecordFieldResolver`.
@@ -77,6 +77,7 @@ func NewRecordFieldResolver(
 	dao CollectionsFinder,
 	baseCollection *models.Collection,
 	requestInfo *models.RequestInfo,
+	// @todo consider moving per filter basis
 	allowHiddenFields bool,
 ) *RecordFieldResolver {
 	r := &RecordFieldResolver{
@@ -88,26 +89,29 @@ func NewRecordFieldResolver(
 		loadedCollections: []*models.Collection{baseCollection},
 		allowedFields: []string{
 			`^\w+[\w\.\:]*$`,
+			`^\@request\.context$`,
 			`^\@request\.method$`,
 			`^\@request\.auth\.[\w\.\:]*\w+$`,
 			`^\@request\.data\.[\w\.\:]*\w+$`,
 			`^\@request\.query\.[\w\.\:]*\w+$`,
 			`^\@request\.headers\.\w+$`,
-			`^\@collection\.\w+\.[\w\.\:]*\w+$`,
+			`^\@collection\.\w+(\:\w+)?\.[\w\.\:]*\w+$`,
 		},
 	}
 
 	r.staticRequestInfo = map[string]any{}
 	if r.requestInfo != nil {
+		r.staticRequestInfo["context"] = r.requestInfo.Context
 		r.staticRequestInfo["method"] = r.requestInfo.Method
 		r.staticRequestInfo["query"] = r.requestInfo.Query
 		r.staticRequestInfo["headers"] = r.requestInfo.Headers
 		r.staticRequestInfo["data"] = r.requestInfo.Data
 		r.staticRequestInfo["auth"] = nil
 		if r.requestInfo.AuthRecord != nil {
-			r.requestInfo.AuthRecord.IgnoreEmailVisibility(true)
-			r.staticRequestInfo["auth"] = r.requestInfo.AuthRecord.PublicExport()
-			r.requestInfo.AuthRecord.IgnoreEmailVisibility(false)
+			authData := r.requestInfo.AuthRecord.PublicExport()
+			// always add the record email no matter of the emailVisibility field
+			authData[schema.FieldNameEmail] = r.requestInfo.AuthRecord.Email()
+			r.staticRequestInfo["auth"] = authData
 		}
 	}
 
@@ -140,7 +144,9 @@ func (r *RecordFieldResolver) UpdateQuery(query *dbx.SelectQuery) error {
 //	id
 //	someSelect.each
 //	project.screen.status
-//	@request.status
+//	screen.project_via_prototype.name
+//	@request.context
+//	@request.method
 //	@request.query.filter
 //	@request.headers.x_token
 //	@request.auth.someRelation.name

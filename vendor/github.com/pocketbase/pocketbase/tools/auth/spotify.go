@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/spotify"
 )
@@ -21,7 +22,9 @@ type Spotify struct {
 // NewSpotifyProvider creates a new Spotify provider instance with some defaults.
 func NewSpotifyProvider() *Spotify {
 	return &Spotify{&baseProvider{
-		ctx: context.Background(),
+		ctx:         context.Background(),
+		displayName: "Spotify",
+		pkce:        true,
 		scopes: []string{
 			"user-read-private",
 			// currently Spotify doesn't return information whether the email is verified or not
@@ -69,6 +72,9 @@ func (p *Spotify) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
+
 	if len(extracted.Images) > 0 {
 		user.AvatarUrl = extracted.Images[0].Url
 	}

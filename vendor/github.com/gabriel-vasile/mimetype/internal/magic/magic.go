@@ -153,8 +153,11 @@ func ftyp(sigs ...[]byte) Detector {
 		if len(raw) < 12 {
 			return false
 		}
+		if !bytes.Equal(raw[4:8], []byte("ftyp")) {
+			return false
+		}
 		for _, s := range sigs {
-			if bytes.Equal(raw[4:12], append([]byte("ftyp"), s...)) {
+			if bytes.Equal(raw[8:12], s) {
 				return true
 			}
 		}
@@ -177,7 +180,9 @@ func newXMLSig(localName, xmlns string) xmlSig {
 // and, optionally, followed by the arguments for the interpreter.
 //
 // Ex:
-//  #! /usr/bin/env php
+//
+//	#! /usr/bin/env php
+//
 // /usr/bin/env is the interpreter, php is the first and only argument.
 func shebang(sigs ...[]byte) Detector {
 	return func(raw []byte, limit uint32) bool {

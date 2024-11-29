@@ -12,6 +12,7 @@ func bindHealthApi(app core.App, rg *echo.Group) {
 	api := healthApi{app: app}
 
 	subGroup := rg.Group("/health")
+	subGroup.HEAD("", api.healthCheck)
 	subGroup.GET("", api.healthCheck)
 }
 
@@ -20,8 +21,8 @@ type healthApi struct {
 }
 
 type healthCheckResponse struct {
-	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Code    int    `json:"code"`
 	Data    struct {
 		CanBackup bool `json:"canBackup"`
 	} `json:"data"`
@@ -29,10 +30,14 @@ type healthCheckResponse struct {
 
 // healthCheck returns a 200 OK response if the server is healthy.
 func (api *healthApi) healthCheck(c echo.Context) error {
+	if c.Request().Method == http.MethodHead {
+		return c.NoContent(http.StatusOK)
+	}
+
 	resp := new(healthCheckResponse)
 	resp.Code = http.StatusOK
 	resp.Message = "API is healthy."
-	resp.Data.CanBackup = !api.app.Cache().Has(core.CacheKeyActiveBackup)
+	resp.Data.CanBackup = !api.app.Store().Has(core.StoreKeyActiveBackup)
 
 	return c.JSON(http.StatusOK, resp)
 }

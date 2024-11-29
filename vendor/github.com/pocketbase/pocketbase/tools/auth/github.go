@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
 )
@@ -23,11 +24,13 @@ type Github struct {
 // NewGithubProvider creates new Github provider instance with some defaults.
 func NewGithubProvider() *Github {
 	return &Github{&baseProvider{
-		ctx:        context.Background(),
-		scopes:     []string{"read:user", "user:email"},
-		authUrl:    github.Endpoint.AuthURL,
-		tokenUrl:   github.Endpoint.TokenURL,
-		userApiUrl: "https://api.github.com/user",
+		ctx:         context.Background(),
+		displayName: "GitHub",
+		pkce:        true, // technically is not supported yet but it is safe as the PKCE params are just ignored
+		scopes:      []string{"read:user", "user:email"},
+		authUrl:     github.Endpoint.AuthURL,
+		tokenUrl:    github.Endpoint.TokenURL,
+		userApiUrl:  "https://api.github.com/user",
 	}}
 }
 
@@ -66,6 +69,8 @@ func (p *Github) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	// in case user has set "Keep my email address private", send an
 	// **optional** API request to retrieve the verified primary email

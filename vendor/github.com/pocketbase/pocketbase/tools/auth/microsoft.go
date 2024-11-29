@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/pocketbase/pocketbase/tools/types"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/microsoft"
 )
@@ -22,11 +23,13 @@ type Microsoft struct {
 func NewMicrosoftProvider() *Microsoft {
 	endpoints := microsoft.AzureADEndpoint("")
 	return &Microsoft{&baseProvider{
-		ctx:        context.Background(),
-		scopes:     []string{"User.Read"},
-		authUrl:    endpoints.AuthURL,
-		tokenUrl:   endpoints.TokenURL,
-		userApiUrl: "https://graph.microsoft.com/v1.0/me",
+		ctx:         context.Background(),
+		displayName: "Microsoft",
+		pkce:        true,
+		scopes:      []string{"User.Read"},
+		authUrl:     endpoints.AuthURL,
+		tokenUrl:    endpoints.TokenURL,
+		userApiUrl:  "https://graph.microsoft.com/v1.0/me",
 	}}
 }
 
@@ -62,6 +65,8 @@ func (p *Microsoft) FetchAuthUser(token *oauth2.Token) (*AuthUser, error) {
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 	}
+
+	user.Expiry, _ = types.ParseDateTime(token.Expiry)
 
 	return user, nil
 }

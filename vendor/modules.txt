@@ -34,64 +34,8 @@ github.com/acomagu/bufpipe
 # github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 ## explicit; go 1.13
 github.com/asaskevich/govalidator
-# github.com/aws/aws-sdk-go v1.45.3
-## explicit; go 1.11
-github.com/aws/aws-sdk-go/aws
-github.com/aws/aws-sdk-go/aws/arn
-github.com/aws/aws-sdk-go/aws/auth/bearer
-github.com/aws/aws-sdk-go/aws/awserr
-github.com/aws/aws-sdk-go/aws/awsutil
-github.com/aws/aws-sdk-go/aws/client
-github.com/aws/aws-sdk-go/aws/client/metadata
-github.com/aws/aws-sdk-go/aws/corehandlers
-github.com/aws/aws-sdk-go/aws/credentials
-github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds
-github.com/aws/aws-sdk-go/aws/credentials/endpointcreds
-github.com/aws/aws-sdk-go/aws/credentials/processcreds
-github.com/aws/aws-sdk-go/aws/credentials/ssocreds
-github.com/aws/aws-sdk-go/aws/credentials/stscreds
-github.com/aws/aws-sdk-go/aws/csm
-github.com/aws/aws-sdk-go/aws/defaults
-github.com/aws/aws-sdk-go/aws/ec2metadata
-github.com/aws/aws-sdk-go/aws/endpoints
-github.com/aws/aws-sdk-go/aws/request
-github.com/aws/aws-sdk-go/aws/session
-github.com/aws/aws-sdk-go/aws/signer/v4
-github.com/aws/aws-sdk-go/internal/context
-github.com/aws/aws-sdk-go/internal/ini
-github.com/aws/aws-sdk-go/internal/s3shared
-github.com/aws/aws-sdk-go/internal/s3shared/arn
-github.com/aws/aws-sdk-go/internal/s3shared/s3err
-github.com/aws/aws-sdk-go/internal/sdkio
-github.com/aws/aws-sdk-go/internal/sdkmath
-github.com/aws/aws-sdk-go/internal/sdkrand
-github.com/aws/aws-sdk-go/internal/sdkuri
-github.com/aws/aws-sdk-go/internal/shareddefaults
-github.com/aws/aws-sdk-go/internal/strings
-github.com/aws/aws-sdk-go/internal/sync/singleflight
-github.com/aws/aws-sdk-go/private/checksum
-github.com/aws/aws-sdk-go/private/protocol
-github.com/aws/aws-sdk-go/private/protocol/eventstream
-github.com/aws/aws-sdk-go/private/protocol/eventstream/eventstreamapi
-github.com/aws/aws-sdk-go/private/protocol/json/jsonutil
-github.com/aws/aws-sdk-go/private/protocol/jsonrpc
-github.com/aws/aws-sdk-go/private/protocol/query
-github.com/aws/aws-sdk-go/private/protocol/query/queryutil
-github.com/aws/aws-sdk-go/private/protocol/rest
-github.com/aws/aws-sdk-go/private/protocol/restjson
-github.com/aws/aws-sdk-go/private/protocol/restxml
-github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil
-github.com/aws/aws-sdk-go/service/s3
-github.com/aws/aws-sdk-go/service/s3/s3iface
-github.com/aws/aws-sdk-go/service/s3/s3manager
-github.com/aws/aws-sdk-go/service/sso
-github.com/aws/aws-sdk-go/service/sso/ssoiface
-github.com/aws/aws-sdk-go/service/ssooidc
-github.com/aws/aws-sdk-go/service/sts
-github.com/aws/aws-sdk-go/service/sts/stsiface
-# github.com/aws/aws-sdk-go-v2 v1.21.0
-## explicit; go 1.15
-github.com/aws/aws-sdk-go-v2
+# github.com/aws/aws-sdk-go-v2 v1.32.2
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/aws
 github.com/aws/aws-sdk-go-v2/aws/arn
 github.com/aws/aws-sdk-go-v2/aws/defaults
@@ -105,8 +49,12 @@ github.com/aws/aws-sdk-go-v2/aws/signer/internal/v4
 github.com/aws/aws-sdk-go-v2/aws/signer/v4
 github.com/aws/aws-sdk-go-v2/aws/transport/http
 github.com/aws/aws-sdk-go-v2/internal/auth
+github.com/aws/aws-sdk-go-v2/internal/auth/smithy
 github.com/aws/aws-sdk-go-v2/internal/awsutil
+github.com/aws/aws-sdk-go-v2/internal/context
+github.com/aws/aws-sdk-go-v2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/internal/endpoints/awsrulesfn
+github.com/aws/aws-sdk-go-v2/internal/middleware
 github.com/aws/aws-sdk-go-v2/internal/rand
 github.com/aws/aws-sdk-go-v2/internal/sdk
 github.com/aws/aws-sdk-go-v2/internal/sdkio
@@ -114,15 +62,15 @@ github.com/aws/aws-sdk-go-v2/internal/shareddefaults
 github.com/aws/aws-sdk-go-v2/internal/strings
 github.com/aws/aws-sdk-go-v2/internal/sync/singleflight
 github.com/aws/aws-sdk-go-v2/internal/timeconv
-# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.13
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.4
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi
-# github.com/aws/aws-sdk-go-v2/config v1.18.39
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/config v1.27.31
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/config
-# github.com/aws/aws-sdk-go-v2/credentials v1.13.37
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/credentials v1.17.30
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/credentials
 github.com/aws/aws-sdk-go-v2/credentials/ec2rolecreds
 github.com/aws/aws-sdk-go-v2/credentials/endpointcreds
@@ -130,67 +78,70 @@ github.com/aws/aws-sdk-go-v2/credentials/endpointcreds/internal/client
 github.com/aws/aws-sdk-go-v2/credentials/processcreds
 github.com/aws/aws-sdk-go-v2/credentials/ssocreds
 github.com/aws/aws-sdk-go-v2/credentials/stscreds
-# github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.11
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.12
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds
 github.com/aws/aws-sdk-go-v2/feature/ec2/imds/internal/config
-# github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.83
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.15
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/feature/s3/manager
-# github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.41
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.16
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/internal/configsources
-# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.35
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.16
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/internal/endpoints/v2
-# github.com/aws/aws-sdk-go-v2/internal/ini v1.3.42
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/internal/ini v1.8.1
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/internal/ini
-# github.com/aws/aws-sdk-go-v2/internal/v4a v1.1.4
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.16
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/internal/v4a
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
-# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.9.14
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.4
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
-# github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.1.36
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.3.18
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/service/internal/checksum
-# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.35
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.18
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
-# github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.15.4
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.16
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config
-# github.com/aws/aws-sdk-go-v2/service/s3 v1.38.5
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/service/s3 v1.60.1
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/service/s3
 github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
 github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/s3/types
-# github.com/aws/aws-sdk-go-v2/service/sso v1.13.6
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/service/sso v1.22.5
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/service/sso
 github.com/aws/aws-sdk-go-v2/service/sso/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sso/types
-# github.com/aws/aws-sdk-go-v2/service/ssooidc v1.15.6
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.5
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/service/ssooidc
 github.com/aws/aws-sdk-go-v2/service/ssooidc/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/ssooidc/types
-# github.com/aws/aws-sdk-go-v2/service/sts v1.21.5
-## explicit; go 1.15
+# github.com/aws/aws-sdk-go-v2/service/sts v1.30.5
+## explicit; go 1.21
 github.com/aws/aws-sdk-go-v2/service/sts
 github.com/aws/aws-sdk-go-v2/service/sts/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sts/types
-# github.com/aws/smithy-go v1.14.2
-## explicit; go 1.15
+# github.com/aws/smithy-go v1.22.0
+## explicit; go 1.21
 github.com/aws/smithy-go
+github.com/aws/smithy-go/auth
 github.com/aws/smithy-go/auth/bearer
+github.com/aws/smithy-go/container/private/cache
+github.com/aws/smithy-go/container/private/cache/lru
 github.com/aws/smithy-go/context
 github.com/aws/smithy-go/document
 github.com/aws/smithy-go/encoding
@@ -202,18 +153,21 @@ github.com/aws/smithy-go/endpoints/private/rulesfn
 github.com/aws/smithy-go/internal/sync/singleflight
 github.com/aws/smithy-go/io
 github.com/aws/smithy-go/logging
+github.com/aws/smithy-go/metrics
 github.com/aws/smithy-go/middleware
+github.com/aws/smithy-go/private/requestcompression
 github.com/aws/smithy-go/ptr
 github.com/aws/smithy-go/rand
 github.com/aws/smithy-go/sync
 github.com/aws/smithy-go/time
+github.com/aws/smithy-go/tracing
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
 github.com/aws/smithy-go/waiter
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
-# github.com/cespare/xxhash/v2 v2.2.0
+# github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
 # github.com/creack/pty v1.1.18
@@ -235,16 +189,16 @@ github.com/emirpasic/gods/lists/arraylist
 github.com/emirpasic/gods/trees
 github.com/emirpasic/gods/trees/binaryheap
 github.com/emirpasic/gods/utils
-# github.com/fatih/color v1.15.0
+# github.com/fatih/color v1.17.0
 ## explicit; go 1.17
 github.com/fatih/color
-# github.com/gabriel-vasile/mimetype v1.4.2
+# github.com/gabriel-vasile/mimetype v1.4.5
 ## explicit; go 1.20
 github.com/gabriel-vasile/mimetype
 github.com/gabriel-vasile/mimetype/internal/charset
 github.com/gabriel-vasile/mimetype/internal/json
 github.com/gabriel-vasile/mimetype/internal/magic
-# github.com/ganigeorgiev/fexpr v0.3.0
+# github.com/ganigeorgiev/fexpr v0.4.1
 ## explicit; go 1.16
 github.com/ganigeorgiev/fexpr
 # github.com/go-git/gcfg v1.5.0
@@ -309,28 +263,32 @@ github.com/go-git/go-git/v5/utils/merkletrie/noder
 ## explicit; go 1.13
 github.com/go-ozzo/ozzo-validation/v4
 github.com/go-ozzo/ozzo-validation/v4/is
+# github.com/goccy/go-json v0.10.3
+## explicit; go 1.19
+github.com/goccy/go-json
+github.com/goccy/go-json/internal/decoder
+github.com/goccy/go-json/internal/encoder
+github.com/goccy/go-json/internal/encoder/vm
+github.com/goccy/go-json/internal/encoder/vm_color
+github.com/goccy/go-json/internal/encoder/vm_color_indent
+github.com/goccy/go-json/internal/encoder/vm_indent
+github.com/goccy/go-json/internal/errors
+github.com/goccy/go-json/internal/runtime
 # github.com/golang-jwt/jwt/v4 v4.5.0
 ## explicit; go 1.16
 github.com/golang-jwt/jwt/v4
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
-# github.com/golang/protobuf v1.5.3
-## explicit; go 1.9
-github.com/golang/protobuf/jsonpb
+# github.com/golang/protobuf v1.5.4
+## explicit; go 1.17
 github.com/golang/protobuf/proto
-github.com/golang/protobuf/ptypes
-github.com/golang/protobuf/ptypes/any
-github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
-# github.com/google/uuid v1.3.1
+# github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/google/wire v0.5.0
-## explicit; go 1.12
-github.com/google/wire
-# github.com/googleapis/gax-go/v2 v2.12.0
-## explicit; go 1.19
+# github.com/googleapis/gax-go/v2 v2.13.0
+## explicit; go 1.20
 github.com/googleapis/gax-go/v2
 github.com/googleapis/gax-go/v2/apierror
 github.com/googleapis/gax-go/v2/apierror/internal/proto
@@ -354,6 +312,11 @@ github.com/hashicorp/go-multierror
 # github.com/hashicorp/go-rootcerts v1.0.2
 ## explicit; go 1.12
 github.com/hashicorp/go-rootcerts
+# github.com/hashicorp/golang-lru/v2 v2.0.7
+## explicit; go 1.18
+github.com/hashicorp/golang-lru/v2
+github.com/hashicorp/golang-lru/v2/internal
+github.com/hashicorp/golang-lru/v2/simplelru
 # github.com/hashicorp/nomad/api v0.0.0-20230124213148-69fd1a0e4bf7
 ## explicit; go 1.19
 github.com/hashicorp/nomad/api
@@ -367,9 +330,6 @@ github.com/inconshreveable/mousetrap
 # github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99
 ## explicit
 github.com/jbenet/go-context/io
-# github.com/jmespath/go-jmespath v0.4.0
-## explicit; go 1.14
-github.com/jmespath/go-jmespath
 # github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 ## explicit
 github.com/kballard/go-shellquote
@@ -383,11 +343,11 @@ github.com/labstack/echo/v5/middleware
 # github.com/mattn/go-colorable v0.1.13
 ## explicit; go 1.15
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.19
+# github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
-# github.com/mattn/go-sqlite3 v1.14.17
-## explicit; go 1.16
+# github.com/mattn/go-sqlite3 v1.14.22
+## explicit; go 1.19
 github.com/mattn/go-sqlite3
 # github.com/matttproud/golang_protobuf_extensions v1.0.4
 ## explicit; go 1.9
@@ -401,11 +361,14 @@ github.com/mitchellh/go-homedir
 # github.com/mitchellh/mapstructure v1.5.0
 ## explicit; go 1.14
 github.com/mitchellh/mapstructure
+# github.com/ncruces/go-strftime v0.1.9
+## explicit; go 1.17
+github.com/ncruces/go-strftime
 # github.com/pocketbase/dbx v1.10.1
 ## explicit; go 1.13
 github.com/pocketbase/dbx
-# github.com/pocketbase/pocketbase v0.18.5
-## explicit; go 1.18
+# github.com/pocketbase/pocketbase v0.22.27
+## explicit; go 1.22.0
 github.com/pocketbase/pocketbase
 github.com/pocketbase/pocketbase/apis
 github.com/pocketbase/pocketbase/cmd
@@ -427,9 +390,11 @@ github.com/pocketbase/pocketbase/tools/auth
 github.com/pocketbase/pocketbase/tools/cron
 github.com/pocketbase/pocketbase/tools/dbutils
 github.com/pocketbase/pocketbase/tools/filesystem
+github.com/pocketbase/pocketbase/tools/filesystem/internal/s3lite
 github.com/pocketbase/pocketbase/tools/hook
 github.com/pocketbase/pocketbase/tools/inflector
 github.com/pocketbase/pocketbase/tools/list
+github.com/pocketbase/pocketbase/tools/logger
 github.com/pocketbase/pocketbase/tools/mailer
 github.com/pocketbase/pocketbase/tools/migrate
 github.com/pocketbase/pocketbase/tools/osutils
@@ -466,10 +431,10 @@ github.com/remyoudompheng/bigfft
 # github.com/sergi/go-diff v1.1.0
 ## explicit; go 1.12
 github.com/sergi/go-diff/diffmatchpatch
-# github.com/spf13/cast v1.5.1
-## explicit; go 1.18
+# github.com/spf13/cast v1.7.0
+## explicit; go 1.19
 github.com/spf13/cast
-# github.com/spf13/cobra v1.7.0
+# github.com/spf13/cobra v1.8.1
 ## explicit; go 1.15
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
@@ -510,21 +475,19 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# gocloud.dev v0.34.0
-## explicit; go 1.20
-gocloud.dev/aws
+# gocloud.dev v0.39.0
+## explicit; go 1.21.0
 gocloud.dev/blob
 gocloud.dev/blob/driver
 gocloud.dev/blob/fileblob
-gocloud.dev/blob/s3blob
 gocloud.dev/gcerrors
 gocloud.dev/internal/escape
 gocloud.dev/internal/gcerr
 gocloud.dev/internal/oc
 gocloud.dev/internal/openurl
 gocloud.dev/internal/retry
-# golang.org/x/crypto v0.13.0
-## explicit; go 1.17
+# golang.org/x/crypto v0.28.0
+## explicit; go 1.20
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
 golang.org/x/crypto/bcrypt
@@ -532,7 +495,6 @@ golang.org/x/crypto/blowfish
 golang.org/x/crypto/cast5
 golang.org/x/crypto/chacha20
 golang.org/x/crypto/curve25519
-golang.org/x/crypto/curve25519/internal/field
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
@@ -540,20 +502,17 @@ golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/knownhosts
-# golang.org/x/exp v0.0.0-20230124195608-d38c7dcee874
-## explicit; go 1.18
+# golang.org/x/exp v0.0.0-20231108232855-2478ac86f678
+## explicit; go 1.20
 golang.org/x/exp/maps
-# golang.org/x/image v0.12.0
-## explicit; go 1.12
+# golang.org/x/image v0.19.0
+## explicit; go 1.18
 golang.org/x/image/bmp
 golang.org/x/image/ccitt
 golang.org/x/image/tiff
 golang.org/x/image/tiff/lzw
-# golang.org/x/mod v0.12.0
-## explicit; go 1.17
-golang.org/x/mod/semver
-# golang.org/x/net v0.15.0
-## explicit; go 1.17
+# golang.org/x/net v0.30.0
+## explicit; go 1.18
 golang.org/x/net/context
 golang.org/x/net/html
 golang.org/x/net/html/atom
@@ -565,9 +524,10 @@ golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
 golang.org/x/net/proxy
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.12.0
+# golang.org/x/oauth2 v0.22.0
 ## explicit; go 1.18
 golang.org/x/oauth2
+golang.org/x/oauth2/endpoints
 golang.org/x/oauth2/facebook
 golang.org/x/oauth2/github
 golang.org/x/oauth2/instagram
@@ -578,22 +538,23 @@ golang.org/x/oauth2/spotify
 golang.org/x/oauth2/twitch
 golang.org/x/oauth2/vk
 golang.org/x/oauth2/yandex
-# golang.org/x/sync v0.3.0
-## explicit; go 1.17
+# golang.org/x/sync v0.8.0
+## explicit; go 1.18
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.12.0
-## explicit; go 1.17
+golang.org/x/sync/semaphore
+golang.org/x/sync/singleflight
+# golang.org/x/sys v0.26.0
+## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
-golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.12.0
-## explicit; go 1.17
+# golang.org/x/term v0.25.0
+## explicit; go 1.18
 golang.org/x/term
-# golang.org/x/text v0.13.0
-## explicit; go 1.17
+# golang.org/x/text v0.19.0
+## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/internal
 golang.org/x/text/internal/language
@@ -605,57 +566,31 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
-# golang.org/x/time v0.3.0
-## explicit
-golang.org/x/time/rate
-# golang.org/x/tools v0.13.0
+# golang.org/x/time v0.6.0
 ## explicit; go 1.18
-golang.org/x/tools/go/gcexportdata
-golang.org/x/tools/go/internal/packagesdriver
-golang.org/x/tools/go/packages
-golang.org/x/tools/go/types/objectpath
-golang.org/x/tools/internal/event
-golang.org/x/tools/internal/event/core
-golang.org/x/tools/internal/event/keys
-golang.org/x/tools/internal/event/label
-golang.org/x/tools/internal/event/tag
-golang.org/x/tools/internal/gcimporter
-golang.org/x/tools/internal/gocommand
-golang.org/x/tools/internal/packagesinternal
-golang.org/x/tools/internal/pkgbits
-golang.org/x/tools/internal/tokeninternal
-golang.org/x/tools/internal/typeparams
-golang.org/x/tools/internal/typesinternal
-# golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
-## explicit; go 1.17
+golang.org/x/time/rate
+# golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9
+## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.138.0
-## explicit; go 1.19
+# google.golang.org/api v0.194.0
+## explicit; go 1.21
 google.golang.org/api/googleapi
 google.golang.org/api/internal/third_party/uritemplates
-# google.golang.org/appengine v1.6.8
-## explicit; go 1.11
-google.golang.org/appengine/internal
-google.golang.org/appengine/internal/base
-google.golang.org/appengine/internal/datastore
-google.golang.org/appengine/internal/log
-google.golang.org/appengine/internal/remote_api
-google.golang.org/appengine/internal/urlfetch
-google.golang.org/appengine/urlfetch
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20230822172742-b8732ec3820d
-## explicit; go 1.19
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20240827150818-7e3bb234dfed
+## explicit; go 1.21
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.57.0
-## explicit; go 1.17
+# google.golang.org/grpc v1.65.0
+## explicit; go 1.21
 google.golang.org/grpc
 google.golang.org/grpc/attributes
 google.golang.org/grpc/backoff
 google.golang.org/grpc/balancer
 google.golang.org/grpc/balancer/base
 google.golang.org/grpc/balancer/grpclb/state
+google.golang.org/grpc/balancer/pickfirst
 google.golang.org/grpc/balancer/roundrobin
 google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/channelz
@@ -676,13 +611,14 @@ google.golang.org/grpc/internal/channelz
 google.golang.org/grpc/internal/credentials
 google.golang.org/grpc/internal/envconfig
 google.golang.org/grpc/internal/grpclog
-google.golang.org/grpc/internal/grpcrand
 google.golang.org/grpc/internal/grpcsync
 google.golang.org/grpc/internal/grpcutil
+google.golang.org/grpc/internal/idle
 google.golang.org/grpc/internal/metadata
 google.golang.org/grpc/internal/pretty
 google.golang.org/grpc/internal/resolver
 google.golang.org/grpc/internal/resolver/dns
+google.golang.org/grpc/internal/resolver/dns/internal
 google.golang.org/grpc/internal/resolver/passthrough
 google.golang.org/grpc/internal/resolver/unix
 google.golang.org/grpc/internal/serviceconfig
@@ -694,18 +630,21 @@ google.golang.org/grpc/keepalive
 google.golang.org/grpc/metadata
 google.golang.org/grpc/peer
 google.golang.org/grpc/resolver
+google.golang.org/grpc/resolver/dns
 google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.31.0
-## explicit; go 1.11
+# google.golang.org/protobuf v1.34.2
+## explicit; go 1.20
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
 google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/editiondefaults
+google.golang.org/protobuf/internal/editionssupport
 google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/json
 google.golang.org/protobuf/internal/encoding/messageset
@@ -723,29 +662,25 @@ google.golang.org/protobuf/internal/set
 google.golang.org/protobuf/internal/strs
 google.golang.org/protobuf/internal/version
 google.golang.org/protobuf/proto
+google.golang.org/protobuf/protoadapt
 google.golang.org/protobuf/reflect/protodesc
 google.golang.org/protobuf/reflect/protoreflect
 google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/descriptorpb
+google.golang.org/protobuf/types/gofeaturespb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
 # gopkg.in/warnings.v0 v0.1.2
 ## explicit
 gopkg.in/warnings.v0
-# lukechampine.com/uint128 v1.3.0
-## explicit; go 1.12
-lukechampine.com/uint128
-# modernc.org/cc/v3 v3.41.0
-## explicit; go 1.17
-modernc.org/cc/v3
-# modernc.org/ccgo/v3 v3.16.15
-## explicit; go 1.18
-modernc.org/ccgo/v3/lib
-# modernc.org/libc v1.24.1
-## explicit; go 1.18
+# modernc.org/gc/v3 v3.0.0-20240801135723-a856999a2e4a
+## explicit; go 1.20
+modernc.org/gc/v3
+# modernc.org/libc v1.55.3
+## explicit; go 1.20
 modernc.org/libc
 modernc.org/libc/errno
 modernc.org/libc/fcntl
@@ -775,14 +710,11 @@ modernc.org/libc/wctype
 # modernc.org/mathutil v1.6.0
 ## explicit; go 1.18
 modernc.org/mathutil
-# modernc.org/memory v1.7.1
+# modernc.org/memory v1.8.0
 ## explicit; go 1.18
 modernc.org/memory
-# modernc.org/opt v0.1.3
-## explicit; go 1.13
-modernc.org/opt
-# modernc.org/sqlite v1.25.0
-## explicit; go 1.18
+# modernc.org/sqlite v1.32.0
+## explicit; go 1.20
 modernc.org/sqlite
 modernc.org/sqlite/lib
 # modernc.org/strutil v1.2.0
