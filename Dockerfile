@@ -15,7 +15,7 @@ COPY frontend/ .
 RUN npm run build
 
 # build backend
-FROM golang:1.20-alpine AS build
+FROM golang:1.23-alpine AS build
 
 RUN apk add --no-cache git
 
