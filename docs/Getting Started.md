@@ -56,6 +56,9 @@ Nomad Ops can be installed inside or outside of your nomad-cluster.
 
 Keep in mind that Nomad Ops stores its data on the local file system. Please use a NFS-mount or similar to enable scheduling around the cluster.
 
+> There are performace implications if using a network mount.    
+> Prefer to use a local disk if possible.  
+
 For a simple deployment, consider restricting the deployment to a specific node.
 
 ### Configuration 
