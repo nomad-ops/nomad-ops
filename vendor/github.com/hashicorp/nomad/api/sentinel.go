@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -29,7 +32,7 @@ func (a *SentinelPolicies) Upsert(policy *SentinelPolicy, q *WriteOptions) (*Wri
 	if policy == nil || policy.Name == "" {
 		return nil, errors.New("missing policy name")
 	}
-	wm, err := a.client.write("/v1/sentinel/policy/"+policy.Name, policy, nil, q)
+	wm, err := a.client.put("/v1/sentinel/policy/"+policy.Name, policy, nil, q)
 	if err != nil {
 		return nil, err
 	}

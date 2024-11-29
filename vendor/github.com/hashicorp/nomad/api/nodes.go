@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -9,9 +12,10 @@ import (
 )
 
 const (
-	NodeStatusInit  = "initializing"
-	NodeStatusReady = "ready"
-	NodeStatusDown  = "down"
+	NodeStatusInit         = "initializing"
+	NodeStatusReady        = "ready"
+	NodeStatusDown         = "down"
+	NodeStatusDisconnected = "disconnected"
 
 	// NodeSchedulingEligible and Ineligible marks the node as eligible or not,
 	// respectively, for receiving allocations. This is orthogonal to the node
@@ -34,7 +38,7 @@ func (c *Client) Nodes() *Nodes {
 	return &Nodes{client: c}
 }
 
-// List is used to list out all of the nodes
+// List is used to list out all the nodes
 func (n *Nodes) List(q *QueryOptions) ([]*NodeListStub, *QueryMeta, error) {
 	var resp NodeIndexSort
 	qm, err := n.client.query("/v1/nodes", &resp, q)
@@ -135,7 +139,7 @@ func (n *Nodes) UpdateDrainOpts(nodeID string, opts *DrainOptions, q *WriteOptio
 	}
 
 	var resp NodeDrainUpdateResponse
-	wm, err := n.client.write("/v1/node/"+nodeID+"/drain", req, &resp, q)
+	wm, err := n.client.put("/v1/node/"+nodeID+"/drain", req, &resp, q)
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +423,7 @@ func (n *Nodes) ToggleEligibility(nodeID string, eligible bool, q *WriteOptions)
 	}
 
 	var resp NodeEligibilityUpdateResponse
-	wm, err := n.client.write("/v1/node/"+nodeID+"/eligibility", req, &resp, q)
+	wm, err := n.client.put("/v1/node/"+nodeID+"/eligibility", req, &resp, q)
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +455,7 @@ func (n *Nodes) CSIVolumes(nodeID string, q *QueryOptions) ([]*CSIVolumeListStub
 // ForceEvaluate is used to force-evaluate an existing node.
 func (n *Nodes) ForceEvaluate(nodeID string, q *WriteOptions) (string, *WriteMeta, error) {
 	var resp nodeEvalResponse
-	wm, err := n.client.write("/v1/node/"+nodeID+"/evaluate", nil, &resp, q)
+	wm, err := n.client.put("/v1/node/"+nodeID+"/evaluate", nil, &resp, q)
 	if err != nil {
 		return "", nil, err
 	}
@@ -515,7 +519,7 @@ type HostVolumeInfo struct {
 	ReadOnly bool
 }
 
-//HostNetworkInfo is used to return metadata about a given HostNetwork
+// HostNetworkInfo is used to return metadata about a given HostNetwork
 type HostNetworkInfo struct {
 	Name          string
 	CIDR          string
@@ -549,6 +553,7 @@ type Node struct {
 	Links                 map[string]string
 	Meta                  map[string]string
 	NodeClass             string
+	NodePool              string
 	CgroupParent          string
 	Drain                 bool
 	DrainStrategy         *DrainStrategy
@@ -778,6 +783,7 @@ type HostStats struct {
 	Memory           *HostMemoryStats
 	CPU              []*HostCPUStats
 	DiskStats        []*HostDiskStats
+	AllocDirStats    *HostDiskStats
 	DeviceStats      []*DeviceGroupStats
 	Uptime           uint64
 	CPUTicksConsumed float64
@@ -910,6 +916,7 @@ type NodeListStub struct {
 	Datacenter            string
 	Name                  string
 	NodeClass             string
+	NodePool              string
 	Version               string
 	Drain                 bool
 	SchedulingEligibility string

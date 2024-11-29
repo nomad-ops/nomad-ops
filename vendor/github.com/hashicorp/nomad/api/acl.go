@@ -1,8 +1,12 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -31,7 +35,7 @@ func (a *ACLPolicies) Upsert(policy *ACLPolicy, q *WriteOptions) (*WriteMeta, er
 	if policy == nil || policy.Name == "" {
 		return nil, errors.New("missing policy name")
 	}
-	wm, err := a.client.write("/v1/acl/policy/"+policy.Name, policy, nil, q)
+	wm, err := a.client.put("/v1/acl/policy/"+policy.Name, policy, nil, q)
 	if err != nil {
 		return nil, err
 	}
@@ -73,11 +77,12 @@ func (c *Client) ACLTokens() *ACLTokens {
 	return &ACLTokens{client: c}
 }
 
-// DEPRECATED: will be removed in Nomad 1.5.0
 // Bootstrap is used to get the initial bootstrap token
+//
+// See BootstrapOpts to set ACL bootstrapping options.
 func (a *ACLTokens) Bootstrap(q *WriteOptions) (*ACLToken, *WriteMeta, error) {
 	var resp ACLToken
-	wm, err := a.client.write("/v1/acl/bootstrap", nil, &resp, q)
+	wm, err := a.client.put("/v1/acl/bootstrap", nil, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -94,7 +99,7 @@ func (a *ACLTokens) BootstrapOpts(btoken string, q *WriteOptions) (*ACLToken, *W
 	}
 
 	var resp ACLToken
-	wm, err := a.client.write("/v1/acl/bootstrap", req, &resp, q)
+	wm, err := a.client.put("/v1/acl/bootstrap", req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -117,7 +122,7 @@ func (a *ACLTokens) Create(token *ACLToken, q *WriteOptions) (*ACLToken, *WriteM
 		return nil, nil, errors.New("cannot specify Accessor ID")
 	}
 	var resp ACLToken
-	wm, err := a.client.write("/v1/acl/token", token, &resp, q)
+	wm, err := a.client.put("/v1/acl/token", token, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -130,7 +135,7 @@ func (a *ACLTokens) Update(token *ACLToken, q *WriteOptions) (*ACLToken, *WriteM
 		return nil, nil, errors.New("missing accessor ID")
 	}
 	var resp ACLToken
-	wm, err := a.client.write("/v1/acl/token/"+token.AccessorID,
+	wm, err := a.client.put("/v1/acl/token/"+token.AccessorID,
 		token, &resp, q)
 	if err != nil {
 		return nil, nil, err
@@ -176,7 +181,7 @@ func (a *ACLTokens) Self(q *QueryOptions) (*ACLToken, *QueryMeta, error) {
 // UpsertOneTimeToken is used to create a one-time token
 func (a *ACLTokens) UpsertOneTimeToken(q *WriteOptions) (*OneTimeToken, *WriteMeta, error) {
 	var resp *OneTimeTokenUpsertResponse
-	wm, err := a.client.write("/v1/acl/token/onetime", nil, &resp, q)
+	wm, err := a.client.put("/v1/acl/token/onetime", nil, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -193,7 +198,7 @@ func (a *ACLTokens) ExchangeOneTimeToken(secret string, q *WriteOptions) (*ACLTo
 	}
 	req := &OneTimeTokenExchangeRequest{OneTimeSecretID: secret}
 	var resp *OneTimeTokenExchangeResponse
-	wm, err := a.client.write("/v1/acl/token/onetime/exchange", req, &resp, q)
+	wm, err := a.client.put("/v1/acl/token/onetime/exchange", req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -243,7 +248,7 @@ func (a *ACLRoles) Create(role *ACLRole, w *WriteOptions) (*ACLRole, *WriteMeta,
 		return nil, nil, errors.New("cannot specify ACL role ID")
 	}
 	var resp ACLRole
-	wm, err := a.client.write("/v1/acl/role", role, &resp, w)
+	wm, err := a.client.put("/v1/acl/role", role, &resp, w)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -256,7 +261,7 @@ func (a *ACLRoles) Update(role *ACLRole, w *WriteOptions) (*ACLRole, *WriteMeta,
 		return nil, nil, errMissingACLRoleID
 	}
 	var resp ACLRole
-	wm, err := a.client.write("/v1/acl/role/"+role.ID, role, &resp, w)
+	wm, err := a.client.put("/v1/acl/role/"+role.ID, role, &resp, w)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -328,7 +333,7 @@ func (a *ACLAuthMethods) Create(authMethod *ACLAuthMethod, w *WriteOptions) (*AC
 		return nil, nil, errMissingACLAuthMethodName
 	}
 	var resp ACLAuthMethod
-	wm, err := a.client.write("/v1/acl/auth-method", authMethod, &resp, w)
+	wm, err := a.client.put("/v1/acl/auth-method", authMethod, &resp, w)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -341,7 +346,7 @@ func (a *ACLAuthMethods) Update(authMethod *ACLAuthMethod, w *WriteOptions) (*AC
 		return nil, nil, errMissingACLAuthMethodName
 	}
 	var resp ACLAuthMethod
-	wm, err := a.client.write("/v1/acl/auth-method/"+authMethod.Name, authMethod, &resp, w)
+	wm, err := a.client.put("/v1/acl/auth-method/"+authMethod.Name, authMethod, &resp, w)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -397,7 +402,7 @@ func (a *ACLBindingRules) List(q *QueryOptions) ([]*ACLBindingRuleListStub, *Que
 // Create is used to create an ACL binding rule.
 func (a *ACLBindingRules) Create(bindingRule *ACLBindingRule, w *WriteOptions) (*ACLBindingRule, *WriteMeta, error) {
 	var resp ACLBindingRule
-	wm, err := a.client.write("/v1/acl/binding-rule", bindingRule, &resp, w)
+	wm, err := a.client.put("/v1/acl/binding-rule", bindingRule, &resp, w)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -410,7 +415,7 @@ func (a *ACLBindingRules) Update(bindingRule *ACLBindingRule, w *WriteOptions) (
 		return nil, nil, errMissingACLBindingRuleID
 	}
 	var resp ACLBindingRule
-	wm, err := a.client.write("/v1/acl/binding-rule/"+bindingRule.ID, bindingRule, &resp, w)
+	wm, err := a.client.put("/v1/acl/binding-rule/"+bindingRule.ID, bindingRule, &resp, w)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -443,20 +448,35 @@ func (a *ACLBindingRules) Get(bindingRuleID string, q *QueryOptions) (*ACLBindin
 }
 
 // ACLOIDC is used to query the ACL OIDC endpoints.
+//
+// Deprecated: ACLOIDC is deprecated, use ACLAuth instead.
 type ACLOIDC struct {
 	client *Client
+	ACLAuth
 }
 
 // ACLOIDC returns a new handle on the ACL auth-methods API client.
+//
+// Deprecated: c.ACLOIDC() is deprecated, use c.ACLAuth() instead.
 func (c *Client) ACLOIDC() *ACLOIDC {
 	return &ACLOIDC{client: c}
 }
 
+// ACLAuth is used to query the ACL auth endpoints.
+type ACLAuth struct {
+	client *Client
+}
+
+// ACLAuth returns a new handle on the ACL auth-methods API client.
+func (c *Client) ACLAuth() *ACLAuth {
+	return &ACLAuth{client: c}
+}
+
 // GetAuthURL generates the OIDC provider authentication URL. This URL should
 // be visited in order to sign in to the provider.
-func (a *ACLOIDC) GetAuthURL(req *ACLOIDCAuthURLRequest, q *WriteOptions) (*ACLOIDCAuthURLResponse, *WriteMeta, error) {
+func (a *ACLAuth) GetAuthURL(req *ACLOIDCAuthURLRequest, q *WriteOptions) (*ACLOIDCAuthURLResponse, *WriteMeta, error) {
 	var resp ACLOIDCAuthURLResponse
-	wm, err := a.client.write("/v1/acl/oidc/auth-url", req, &resp, q)
+	wm, err := a.client.put("/v1/acl/oidc/auth-url", req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -465,9 +485,20 @@ func (a *ACLOIDC) GetAuthURL(req *ACLOIDCAuthURLRequest, q *WriteOptions) (*ACLO
 
 // CompleteAuth exchanges the OIDC provider token for a Nomad token with the
 // appropriate claims attached.
-func (a *ACLOIDC) CompleteAuth(req *ACLOIDCCompleteAuthRequest, q *WriteOptions) (*ACLToken, *WriteMeta, error) {
+func (a *ACLAuth) CompleteAuth(req *ACLOIDCCompleteAuthRequest, q *WriteOptions) (*ACLToken, *WriteMeta, error) {
 	var resp ACLToken
-	wm, err := a.client.write("/v1/acl/oidc/complete-auth", req, &resp, q)
+	wm, err := a.client.put("/v1/acl/oidc/complete-auth", req, &resp, q)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &resp, wm, nil
+}
+
+// Login exchanges the third party token for a Nomad token with the appropriate
+// claims attached.
+func (a *ACLAuth) Login(req *ACLLoginRequest, q *WriteOptions) (*ACLToken, *WriteMeta, error) {
+	var resp ACLToken
+	wm, err := a.client.put("/v1/acl/login", req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -543,6 +574,53 @@ type ACLTokenRoleLink struct {
 	// Name is the human friendly identifier for the ACL role and is a
 	// convenience field for operators.
 	Name string
+}
+
+// MarshalJSON implements the json.Marshaler interface and allows
+// ACLToken.ExpirationTTL to be marshaled correctly.
+func (a *ACLToken) MarshalJSON() ([]byte, error) {
+	type Alias ACLToken
+	exported := &struct {
+		ExpirationTTL string
+		*Alias
+	}{
+		ExpirationTTL: a.ExpirationTTL.String(),
+		Alias:         (*Alias)(a),
+	}
+	if a.ExpirationTTL == 0 {
+		exported.ExpirationTTL = ""
+	}
+	return json.Marshal(exported)
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface and allows
+// ACLToken.ExpirationTTL to be unmarshalled correctly.
+func (a *ACLToken) UnmarshalJSON(data []byte) (err error) {
+	type Alias ACLToken
+	aux := &struct {
+		ExpirationTTL any
+		*Alias
+	}{
+		Alias: (*Alias)(a),
+	}
+
+	if err = json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.ExpirationTTL != nil {
+		switch v := aux.ExpirationTTL.(type) {
+		case string:
+			if v != "" {
+				if a.ExpirationTTL, err = time.ParseDuration(v); err != nil {
+					return err
+				}
+			}
+		case float64:
+			a.ExpirationTTL = time.Duration(v)
+		}
+
+	}
+	return nil
 }
 
 type ACLTokenListStub struct {
@@ -676,6 +754,9 @@ type ACLAuthMethod struct {
 	// ACLAuthMethodTokenLocalityGlobal for convenience.
 	TokenLocality string
 
+	// TokenNameFormat defines the HIL template to use when building the token name
+	TokenNameFormat string
+
 	// MaxTokenTTL is the maximum life of a token created by this method.
 	MaxTokenTTL time.Duration
 
@@ -691,20 +772,6 @@ type ACLAuthMethod struct {
 	ModifyTime  time.Time
 	CreateIndex uint64
 	ModifyIndex uint64
-}
-
-// ACLAuthMethodConfig is used to store configuration of an auth method.
-type ACLAuthMethodConfig struct {
-	OIDCDiscoveryURL    string
-	OIDCClientID        string
-	OIDCClientSecret    string
-	OIDCScopes          []string
-	BoundAudiences      []string
-	AllowedRedirectURIs []string
-	DiscoveryCaPem      []string
-	SigningAlgs         []string
-	ClaimMappings       map[string]string
-	ListClaimMappings   map[string]string
 }
 
 // MarshalJSON implements the json.Marshaler interface and allows
@@ -746,6 +813,140 @@ func (m *ACLAuthMethod) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ACLAuthMethodConfig is used to store configuration of an auth method.
+type ACLAuthMethodConfig struct {
+	// A list of PEM-encoded public keys to use to authenticate signatures
+	// locally
+	JWTValidationPubKeys []string
+	// JSON Web Key Sets url for authenticating signatures
+	JWKSURL string
+	// The OIDC Discovery URL, without any .well-known component (base path)
+	OIDCDiscoveryURL string
+	// The OAuth Client ID configured with the OIDC provider
+	OIDCClientID string
+	// The OAuth Client Secret configured with the OIDC provider
+	OIDCClientSecret string
+	// Disable claims from the OIDC UserInfo endpoint
+	OIDCDisableUserInfo bool
+	// List of OIDC scopes
+	OIDCScopes []string
+	// List of auth claims that are valid for login
+	BoundAudiences []string
+	// The value against which to match the iss claim in a JWT
+	BoundIssuer []string
+	// A list of allowed values for redirect_uri
+	AllowedRedirectURIs []string
+	// PEM encoded CA certs for use by the TLS client used to talk with the
+	// OIDC Discovery URL.
+	DiscoveryCaPem []string
+	// PEM encoded CA cert for use by the TLS client used to talk with the JWKS
+	// URL
+	JWKSCACert string
+	// A list of supported signing algorithms
+	SigningAlgs []string
+	// Duration in seconds of leeway when validating expiration of a token to
+	// account for clock skew
+	ExpirationLeeway time.Duration
+	// Duration in seconds of leeway when validating not before values of a
+	// token to account for clock skew.
+	NotBeforeLeeway time.Duration
+	// Duration in seconds of leeway when validating all claims to account for
+	// clock skew.
+	ClockSkewLeeway time.Duration
+	// Mappings of claims (key) that will be copied to a metadata field
+	// (value).
+	ClaimMappings     map[string]string
+	ListClaimMappings map[string]string
+}
+
+// MarshalJSON implements the json.Marshaler interface and allows
+// time.Duration fields to be marshaled correctly.
+func (c *ACLAuthMethodConfig) MarshalJSON() ([]byte, error) {
+	type Alias ACLAuthMethodConfig
+	exported := &struct {
+		ExpirationLeeway string
+		NotBeforeLeeway  string
+		ClockSkewLeeway  string
+		*Alias
+	}{
+		ExpirationLeeway: c.ExpirationLeeway.String(),
+		NotBeforeLeeway:  c.NotBeforeLeeway.String(),
+		ClockSkewLeeway:  c.ClockSkewLeeway.String(),
+		Alias:            (*Alias)(c),
+	}
+	if c.ExpirationLeeway == 0 {
+		exported.ExpirationLeeway = ""
+	}
+	if c.NotBeforeLeeway == 0 {
+		exported.NotBeforeLeeway = ""
+	}
+	if c.ClockSkewLeeway == 0 {
+		exported.ClockSkewLeeway = ""
+	}
+	return json.Marshal(exported)
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface and allows
+// time.Duration fields to be unmarshalled correctly.
+func (c *ACLAuthMethodConfig) UnmarshalJSON(data []byte) error {
+	type Alias ACLAuthMethodConfig
+	aux := &struct {
+		ExpirationLeeway any
+		NotBeforeLeeway  any
+		ClockSkewLeeway  any
+		*Alias
+	}{
+		Alias: (*Alias)(c),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	var err error
+	if aux.ExpirationLeeway != nil {
+		switch v := aux.ExpirationLeeway.(type) {
+		case string:
+			if v != "" {
+				if c.ExpirationLeeway, err = time.ParseDuration(v); err != nil {
+					return err
+				}
+			}
+		case float64:
+			c.ExpirationLeeway = time.Duration(v)
+		default:
+			return fmt.Errorf("unexpected ExpirationLeeway type: %v", v)
+		}
+	}
+	if aux.NotBeforeLeeway != nil {
+		switch v := aux.NotBeforeLeeway.(type) {
+		case string:
+			if v != "" {
+				if c.NotBeforeLeeway, err = time.ParseDuration(v); err != nil {
+					return err
+				}
+			}
+		case float64:
+			c.NotBeforeLeeway = time.Duration(v)
+		default:
+			return fmt.Errorf("unexpected NotBeforeLeeway type: %v", v)
+		}
+	}
+	if aux.ClockSkewLeeway != nil {
+		switch v := aux.ClockSkewLeeway.(type) {
+		case string:
+			if v != "" {
+				if c.ClockSkewLeeway, err = time.ParseDuration(v); err != nil {
+					return err
+				}
+			}
+		case float64:
+			c.ClockSkewLeeway = time.Duration(v)
+		default:
+			return fmt.Errorf("unexpected ClockSkewLeeway type: %v", v)
+		}
+	}
+	return nil
+}
+
 // ACLAuthMethodListStub is the stub object returned when performing a listing
 // of ACL auth-methods. It is intentionally minimal due to the unauthenticated
 // nature of the list endpoint.
@@ -771,6 +972,10 @@ const (
 	// ACLAuthMethodTypeOIDC the ACLAuthMethod.Type and represents an
 	// auth-method which uses the OIDC protocol.
 	ACLAuthMethodTypeOIDC = "OIDC"
+
+	// ACLAuthMethodTypeJWT the ACLAuthMethod.Type and represents an auth-method
+	// which uses the JWT type.
+	ACLAuthMethodTypeJWT = "JWT"
 )
 
 // ACLBindingRule contains a direct relation to an ACLAuthMethod and represents
@@ -799,8 +1004,8 @@ type ACLBindingRule struct {
 	Selector string
 
 	// BindType adjusts how this binding rule is applied at login time. The
-	// valid values are ACLBindingRuleBindTypeRole and
-	// ACLBindingRuleBindTypePolicy.
+	// valid values are ACLBindingRuleBindTypeRole,
+	// ACLBindingRuleBindTypePolicy, and ACLBindingRuleBindTypeManagement.
 	BindType string
 
 	// BindName is the target of the binding. Can be lightly templated using
@@ -826,6 +1031,10 @@ const (
 	// within the ACLBindingRule.BindName parameter, and will be the policy
 	// name.
 	ACLBindingRuleBindTypePolicy = "policy"
+
+	// ACLBindingRuleBindTypeManagement is the ACL binding rule bind type that
+	// will generate management ACL tokens when matched.
+	ACLBindingRuleBindTypeManagement = "management"
 )
 
 // ACLBindingRuleListStub is the stub object returned when performing a listing
@@ -895,4 +1104,14 @@ type ACLOIDCCompleteAuthRequest struct {
 	// RedirectURI is the URL that authorization should redirect to. This is a
 	// required parameter.
 	RedirectURI string
+}
+
+// ACLLoginRequest is the request object to begin auth with an external bearer
+// token provider.
+type ACLLoginRequest struct {
+	// AuthMethodName is the name of the auth method being used to login. This
+	// is a required parameter.
+	AuthMethodName string
+	// LoginToken is the token used to login. This is a required parameter.
+	LoginToken string
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/sourcestore"
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/teamstore"
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/teamsync"
+	"github.com/nomad-ops/nomad-ops/backend/interfaces/userstore"
 	"github.com/nomad-ops/nomad-ops/backend/interfaces/vaulttokenstore"
 	"github.com/nomad-ops/nomad-ops/backend/utils/env"
 	"github.com/nomad-ops/nomad-ops/backend/utils/errors"
@@ -63,7 +64,10 @@ func main() {
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 
-		set := settings.New()
+		set, err := e.App.Dao().FindSettings()
+		if err != nil {
+			return err
+		}
 		set.Meta.AppName = env.GetStringEnv(ctx, logger, "POCKETBASE_APP_NAME", "Nomad-Ops")
 		set.Meta.AppUrl = env.GetStringEnv(ctx, logger, "POCKETBASE_APP_URL", "http://localhost:8090")
 		set.Meta.SenderName = env.GetStringEnv(ctx, logger, "POCKETBASE_SENDER_NAME", "Support")
@@ -88,7 +92,7 @@ func main() {
 
 		microsoftTeamNameProperty := env.GetStringEnv(ctx, logger, "TEAM_NAME_MICROSOFT_PROPERTY", "")
 
-		err := e.App.Dao().SaveSettings(set)
+		err = e.App.Dao().SaveSettings(set)
 		if err != nil {
 			return err
 		}
@@ -124,6 +128,32 @@ func main() {
 			if err != nil {
 				return err
 			}
+		}
+
+		userStore, err := userstore.CreatePocketBaseStore(ctx, logger, userstore.PocketBaseStoreConfig{
+			App: app,
+		})
+		if err != nil {
+			return err
+		}
+
+		users, err := e.App.Dao().FindRecordsByExpr("users")
+		if err != nil {
+			return err
+		}
+
+		if len(users) == 0 {
+			logger.LogInfo(ctx, "Creating initial user...")
+
+			defaultUserEmail := env.GetStringEnv(ctx, logger, "DEFAULT_USER_EMAIL", "user@nomad-ops.org")
+			defaultUserName := env.GetStringEnv(ctx, logger, "DEFAULT_USER_NAME", "user")
+			defaultUserPassword := env.GetStringEnv(ctx, logger, "DEFAULT_USER_PASSWORD", "simple-nomad-ops")
+
+			err = userStore.CreateUser(ctx, defaultUserName, defaultUserEmail, defaultUserPassword)
+			if err != nil {
+				return err
+			}
+			logger.LogInfo(ctx, "Creating initial user...Done")
 		}
 
 		logger.LogInfo(ctx, "Initializing models...")

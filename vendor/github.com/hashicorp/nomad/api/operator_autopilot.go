@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -175,6 +178,86 @@ type OperatorHealthReply struct {
 
 	// Servers holds the health of each server.
 	Servers []ServerHealth
+
+	// The ID of the current leader.
+	Leader string
+
+	// List of servers that are voters in the Raft configuration.
+	Voters []string
+
+	// ReadReplicas holds the list of servers that are
+	// read replicas in the Raft configuration. (Enterprise only)
+	ReadReplicas []string `json:",omitempty"`
+
+	// RedundancyZones holds the list of servers in each redundancy zone.
+	// (Enterprise only)
+	RedundancyZones map[string]AutopilotZone `json:",omitempty"`
+
+	// Upgrade holds the current upgrade status.
+	Upgrade *AutopilotUpgrade `json:",omitempty"`
+
+	// The number of servers that could be lost without an outage
+	// occurring if all the voters don't fail at once.  (Enterprise only)
+	OptimisticFailureTolerance int `json:",omitempty"`
+}
+
+// AutopilotZone holds the list of servers in a redundancy zone.  (Enterprise only)
+type AutopilotZone struct {
+	// Servers holds the list of servers in the redundancy zone.
+	Servers []string
+
+	// Voters holds the list of servers that are voters in the redundancy zone.
+	Voters []string
+
+	// FailureTolerance is the number of servers that could be lost without an
+	// outage occurring.
+	FailureTolerance int
+}
+
+// AutopilotUpgrade holds the current upgrade status.  (Enterprise only)
+type AutopilotUpgrade struct {
+	// Status of the upgrade.
+	Status string
+
+	// TargetVersion is the version that the cluster is upgrading to.
+	TargetVersion string
+
+	// TargetVersionVoters holds the list of servers that are voters in the Raft
+	// configuration of the TargetVersion.
+	TargetVersionVoters []string
+
+	// TargetVersionNonVoters holds the list of servers that are non-voters in
+	// the Raft configuration of the TargetVersion.
+	TargetVersionNonVoters []string
+
+	// TargetVersionReadReplicas holds the list of servers that are read
+	// replicas in the Raft configuration of the TargetVersion.
+	TargetVersionReadReplicas []string
+
+	// OtherVersionVoters holds the list of servers that are voters in the Raft
+	// configuration of a version other than the TargetVersion.
+	OtherVersionVoters []string
+
+	// OtherVersionNonVoters holds the list of servers that are non-voters in
+	// the Raft configuration of a version other than the TargetVersion.
+	OtherVersionNonVoters []string
+
+	// OtherVersionReadReplicas holds the list of servers that are read replicas
+	// in the Raft configuration of a version other than the TargetVersion.
+	OtherVersionReadReplicas []string
+
+	// RedundancyZones holds the list of servers in each redundancy zone for the
+	// TargetVersion.
+	RedundancyZones map[string]AutopilotZoneUpgradeVersions
+}
+
+// AutopilotZoneUpgradeVersions holds the list of servers
+// in a redundancy zone for a specific version.  (Enterprise only)
+type AutopilotZoneUpgradeVersions struct {
+	TargetVersionVoters    []string
+	TargetVersionNonVoters []string
+	OtherVersionVoters     []string
+	OtherVersionNonVoters  []string
 }
 
 // AutopilotGetConfiguration is used to query the current Autopilot configuration.
@@ -190,7 +273,7 @@ func (op *Operator) AutopilotGetConfiguration(q *QueryOptions) (*AutopilotConfig
 // AutopilotSetConfiguration is used to set the current Autopilot configuration.
 func (op *Operator) AutopilotSetConfiguration(conf *AutopilotConfiguration, q *WriteOptions) (*WriteMeta, error) {
 	var out bool
-	wm, err := op.c.write("/v1/operator/autopilot/configuration", conf, &out, q)
+	wm, err := op.c.put("/v1/operator/autopilot/configuration", conf, &out, q)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +285,7 @@ func (op *Operator) AutopilotSetConfiguration(conf *AutopilotConfiguration, q *W
 // true on success or false on failures.
 func (op *Operator) AutopilotCASConfiguration(conf *AutopilotConfiguration, q *WriteOptions) (bool, *WriteMeta, error) {
 	var out bool
-	wm, err := op.c.write("/v1/operator/autopilot/configuration?cas="+strconv.FormatUint(conf.ModifyIndex, 10), conf, &out, q)
+	wm, err := op.c.put("/v1/operator/autopilot/configuration?cas="+strconv.FormatUint(conf.ModifyIndex, 10), conf, &out, q)
 	if err != nil {
 		return false, nil, err
 	}

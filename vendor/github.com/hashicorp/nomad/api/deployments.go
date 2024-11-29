@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -15,7 +18,7 @@ func (c *Client) Deployments() *Deployments {
 	return &Deployments{client: c}
 }
 
-// List is used to dump all of the deployments.
+// List is used to dump all the deployments.
 func (d *Deployments) List(q *QueryOptions) ([]*Deployment, *QueryMeta, error) {
 	var resp []*Deployment
 	qm, err := d.client.query("/v1/deployments", &resp, q)
@@ -58,7 +61,7 @@ func (d *Deployments) Fail(deploymentID string, q *WriteOptions) (*DeploymentUpd
 	req := &DeploymentFailRequest{
 		DeploymentID: deploymentID,
 	}
-	wm, err := d.client.write("/v1/deployment/fail/"+deploymentID, req, &resp, q)
+	wm, err := d.client.put("/v1/deployment/fail/"+deploymentID, req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -72,7 +75,7 @@ func (d *Deployments) Pause(deploymentID string, pause bool, q *WriteOptions) (*
 		DeploymentID: deploymentID,
 		Pause:        pause,
 	}
-	wm, err := d.client.write("/v1/deployment/pause/"+deploymentID, req, &resp, q)
+	wm, err := d.client.put("/v1/deployment/pause/"+deploymentID, req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -86,7 +89,7 @@ func (d *Deployments) PromoteAll(deploymentID string, q *WriteOptions) (*Deploym
 		DeploymentID: deploymentID,
 		All:          true,
 	}
-	wm, err := d.client.write("/v1/deployment/promote/"+deploymentID, req, &resp, q)
+	wm, err := d.client.put("/v1/deployment/promote/"+deploymentID, req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -100,7 +103,7 @@ func (d *Deployments) PromoteGroups(deploymentID string, groups []string, q *Wri
 		DeploymentID: deploymentID,
 		Groups:       groups,
 	}
-	wm, err := d.client.write("/v1/deployment/promote/"+deploymentID, req, &resp, q)
+	wm, err := d.client.put("/v1/deployment/promote/"+deploymentID, req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -113,7 +116,7 @@ func (d *Deployments) Unblock(deploymentID string, q *WriteOptions) (*Deployment
 	req := &DeploymentUnblockRequest{
 		DeploymentID: deploymentID,
 	}
-	wm, err := d.client.write("/v1/deployment/unblock/"+deploymentID, req, &resp, q)
+	wm, err := d.client.put("/v1/deployment/unblock/"+deploymentID, req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -129,7 +132,7 @@ func (d *Deployments) SetAllocHealth(deploymentID string, healthy, unhealthy []s
 		HealthyAllocationIDs:   healthy,
 		UnhealthyAllocationIDs: unhealthy,
 	}
-	wm, err := d.client.write("/v1/deployment/allocation-health/"+deploymentID, req, &resp, q)
+	wm, err := d.client.put("/v1/deployment/allocation-health/"+deploymentID, req, &resp, q)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -190,6 +193,10 @@ type Deployment struct {
 
 	CreateIndex uint64
 	ModifyIndex uint64
+
+	// Creation and modification times, stored as UnixNano
+	CreateTime int64
+	ModifyTime int64
 }
 
 // DeploymentState tracks the state of a deployment for a given task group.
@@ -257,6 +264,9 @@ type DeploymentPromoteRequest struct {
 
 	// Groups is used to set the promotion status per task group
 	Groups []string
+
+	// PromotedAt is the timestamp stored as Unix nano
+	PromotedAt int64
 
 	WriteRequest
 }

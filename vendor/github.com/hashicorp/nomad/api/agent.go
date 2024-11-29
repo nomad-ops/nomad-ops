@@ -1,9 +1,12 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strconv"
 )
@@ -30,6 +33,12 @@ type KeyringResponse struct {
 // KeyringRequest is request objects for serf key operations.
 type KeyringRequest struct {
 	Key string
+}
+
+// ForceLeaveOpts are used to configure the ForceLeave method.
+type ForceLeaveOpts struct {
+	// Prune indicates whether to remove a node from the list of members
+	Prune bool
 }
 
 // Agent returns a new agent which can be used to query
@@ -113,7 +122,7 @@ func (a *Agent) Region() (string, error) {
 
 // Join is used to instruct a server node to join another server
 // via the gossip protocol. Multiple addresses may be specified.
-// We attempt to join all of the hosts in the list. Returns the
+// We attempt to join all the hosts in the list. Returns the
 // number of nodes successfully joined and any error. If one or
 // more nodes have a successful result, no error is returned.
 func (a *Agent) Join(addrs ...string) (int, error) {
@@ -125,7 +134,7 @@ func (a *Agent) Join(addrs ...string) (int, error) {
 
 	// Send the join request
 	var resp joinResponse
-	_, err := a.client.write("/v1/agent/join?"+v.Encode(), nil, &resp, nil)
+	_, err := a.client.put("/v1/agent/join?"+v.Encode(), nil, &resp, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed joining: %s", err)
 	}
@@ -160,7 +169,21 @@ func (a *Agent) MembersOpts(opts *QueryOptions) (*ServerMembers, error) {
 
 // ForceLeave is used to eject an existing node from the cluster.
 func (a *Agent) ForceLeave(node string) error {
-	_, err := a.client.write("/v1/agent/force-leave?node="+node, nil, nil, nil)
+	v := url.Values{}
+	v.Add("node", node)
+	_, err := a.client.put("/v1/agent/force-leave?"+v.Encode(), nil, nil, nil)
+	return err
+}
+
+// ForceLeaveWithOptions is used to eject an existing node from the cluster
+// with additional options such as prune.
+func (a *Agent) ForceLeaveWithOptions(node string, opts ForceLeaveOpts) error {
+	v := url.Values{}
+	v.Add("node", node)
+	if opts.Prune {
+		v.Add("prune", "1")
+	}
+	_, err := a.client.put("/v1/agent/force-leave?"+v.Encode(), nil, nil, nil)
 	return err
 }
 
@@ -182,7 +205,7 @@ func (a *Agent) SetServers(addrs []string) error {
 		v.Add("address", addr)
 	}
 
-	_, err := a.client.write("/v1/agent/servers?"+v.Encode(), nil, nil, nil)
+	_, err := a.client.put("/v1/agent/servers?"+v.Encode(), nil, nil, nil)
 	return err
 }
 
@@ -202,7 +225,7 @@ func (a *Agent) InstallKey(key string) (*KeyringResponse, error) {
 		Key: key,
 	}
 	var resp KeyringResponse
-	_, err := a.client.write("/v1/agent/keyring/install", &args, &resp, nil)
+	_, err := a.client.put("/v1/agent/keyring/install", &args, &resp, nil)
 	return &resp, err
 }
 
@@ -212,7 +235,7 @@ func (a *Agent) UseKey(key string) (*KeyringResponse, error) {
 		Key: key,
 	}
 	var resp KeyringResponse
-	_, err := a.client.write("/v1/agent/keyring/use", &args, &resp, nil)
+	_, err := a.client.put("/v1/agent/keyring/use", &args, &resp, nil)
 	return &resp, err
 }
 
@@ -222,7 +245,7 @@ func (a *Agent) RemoveKey(key string) (*KeyringResponse, error) {
 		Key: key,
 	}
 	var resp KeyringResponse
-	_, err := a.client.write("/v1/agent/keyring/remove", &args, &resp, nil)
+	_, err := a.client.put("/v1/agent/keyring/remove", &args, &resp, nil)
 	return &resp, err
 }
 
@@ -287,7 +310,7 @@ func (a *Agent) Monitor(stopCh <-chan struct{}, q *QueryOptions) (<-chan *Stream
 	}
 
 	r.setQueryOptions(q)
-	_, resp, err := requireOK(a.client.doRequest(r))
+	_, resp, err := requireOK(a.client.doRequest(r)) //nolint:bodyclose
 	if err != nil {
 		errCh <- err
 		return nil, errCh
@@ -399,7 +422,7 @@ func (a *Agent) pprofRequest(req string, opts PprofOptions, q *QueryOptions) ([]
 		return nil, err
 	}
 
-	resp, err := ioutil.ReadAll(body)
+	resp, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err
 	}
@@ -511,7 +534,7 @@ func (a *Agent) SetSchedulerWorkerConfig(args SchedulerWorkerPoolArgs, q *WriteO
 	req := AgentSchedulerWorkerConfigRequest(args)
 	var resp AgentSchedulerWorkerConfigResponse
 
-	_, err := a.client.write("/v1/agent/schedulers/config", &req, &resp, q)
+	_, err := a.client.put("/v1/agent/schedulers/config", &req, &resp, q)
 	if err != nil {
 		return nil, err
 	}
