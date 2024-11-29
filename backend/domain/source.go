@@ -168,7 +168,10 @@ func initSourceCollection(app core.App,
 		Name:     "status",
 		Type:     schema.FieldTypeJson,
 		Required: false,
-		Options:  &schema.JsonOptions{},
+		Options: &schema.JsonOptions{
+			// 1 MB
+			MaxSize: 1048576,
+		},
 	})
 	addOrUpdateField(form, &schema.SchemaField{
 		Name:     "teams",
