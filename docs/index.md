@@ -4,8 +4,8 @@ This application brings [Gitops](TOdO) to the [nomad](https://www.nomadproject.i
 
 > Your manifests of what should be deployed live in one or multiple git-repositories and the application makes sure to synchronize your desired state with the nomad cluster.
 
-![git ops overview](https://codefresh.io/wp-content/uploads/2022/03/Codefresh-GitOps.jpeg)
-> Source: https://codefresh.io/wp-content/uploads/2022/03/Codefresh-GitOps.jpeg
+![git ops overview](./Codefresh-GitOps.jpg)
+> Source: https://codefresh.io
 
 ## UI
 

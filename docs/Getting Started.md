@@ -10,7 +10,8 @@
 Run the following in the first terminal:
 
 > Make sure that docker volumes are available  
-> You can use the provided `.deployment/nomad/agent.hcl` as a reference
+> You can use the provided `.deployment/nomad/agent.hcl` as a reference  
+> Remember to set the `NOMAD_ADDR` environment variable to the address of your nomad cluster
 
 `nomad agent -dev -bind 0.0.0.0 -log-level INFO -config .deployment/nomad/agent.hcl`
 
@@ -25,7 +26,6 @@ This makes sure that the namespace nomad-ops exists.
 Deploy Nomad-Ops to nomad by running:
 
 `nomad job run .deployment/nomad/docker.hcl`
-
 
 ### Access the Admin UI
 
