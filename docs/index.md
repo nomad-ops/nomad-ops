@@ -23,8 +23,8 @@ The following notification channels are available.
 
 ### Slack
 
-> TODO: link config
+See [slack-config](./config/index.md#slack-notifier-settings)
 
 ### Webhook
 
-> Coming soon
+See [webhook-config](./config/index.md#webhook-notifier-settings)
