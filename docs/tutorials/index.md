@@ -84,3 +84,13 @@ Once the source is created, you can pause the synchronization using the UI. You 
 
 > The sync is triggered every minute by default. See [Configuration](../config/index.md) for more information.
 
+![synced-app](synced-app.png)
+
+You can also see additional information about the deployed tasks by clicking on the info icon.
+
+![additional-info](additional-info.png)
+
+Clicking the link in the slide out will bring you to the Nomad UI.
+
+![nomad-ui-task](nomad-ui-task.png)
+
