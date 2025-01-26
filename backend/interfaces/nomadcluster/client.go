@@ -136,7 +136,46 @@ func (c *Client) SubscribeJobChanges(ctx context.Context, cb func(jobName string
 	return nil
 }
 
-func hasUpdate(diffResp *api.JobPlanResponse, restart, force bool) bool {
+func hasUpdate(ctx context.Context,
+	logger log.Logger,
+	job *application.JobInfo,
+	diffResp *api.JobPlanResponse,
+	restart,
+	force bool) bool {
+	logger.LogTrace(ctx, "hasUpdate() - Job:%v", log.ToJSONString(job))
+
+	hasGroupScaling := func(taskGroupName string) bool {
+		for _, taskGroup := range job.Job.TaskGroups {
+			if *taskGroup.Name != taskGroupName {
+				continue
+			}
+			if taskGroup.Scaling != nil && taskGroup.Scaling.Enabled != nil && *taskGroup.Scaling.Enabled {
+				return true
+			}
+		}
+		return false
+	}
+
+	hasTaskScaling := func(taskGroupName, taskName, resourceName string) bool {
+		for _, taskGroup := range job.Job.TaskGroups {
+			if *taskGroup.Name != taskGroupName {
+				continue
+			}
+			for _, task := range taskGroup.Tasks {
+				if task.Name != taskName {
+					continue
+				}
+				for _, res := range task.ScalingPolicies {
+					if res.Type != resourceName {
+						continue
+					}
+					return true
+				}
+			}
+		}
+		return false
+	}
+
 	hasDiff := false
 	if len(diffResp.Diff.Objects) > 0 {
 		return true
@@ -155,10 +194,17 @@ func hasUpdate(diffResp *api.JobPlanResponse, restart, force bool) bool {
 	}
 	for _, taskGrp := range diffResp.Diff.TaskGroups {
 		if len(taskGrp.Fields) > 0 {
-			return true
+			// Check if only count is changed && scaling is enabled
+			if len(taskGrp.Fields) > 1 || taskGrp.Fields[0].Name != "Count" || !hasGroupScaling(taskGrp.Name) {
+				return true
+			}
 		}
 		if len(taskGrp.Objects) > 0 {
-			return true
+			// Check if only Scaling is changed
+			// Check if scaling options are changed
+			if len(taskGrp.Objects) > 1 || taskGrp.Objects[0].Name != "Scaling" || len(taskGrp.Objects[0].Fields) > 0 {
+				return true
+			}
 		}
 
 		for _, task := range taskGrp.Tasks {
@@ -166,7 +212,45 @@ func hasUpdate(diffResp *api.JobPlanResponse, restart, force bool) bool {
 				return true
 			}
 			if len(task.Objects) > 0 {
-				return true
+				if len(task.Objects) > 1 {
+					return true
+				}
+				if task.Objects[0].Name != "Resources" {
+					return true
+				}
+				if !hasTaskScaling(taskGrp.Name, task.Name, "vertical_cpu") &&
+					!hasTaskScaling(taskGrp.Name, task.Name, "vertical_mem") {
+					// no scaling for this task, update it
+					return true
+				}
+
+				onlyCPUAndMemoryChanged := true
+				cpuChanged := false
+				memoryChanged := false
+
+				for _, resourceEdit := range task.Objects[0].Fields {
+					if resourceEdit.Name != "CPU" && resourceEdit.Name != "MemoryMB" && resourceEdit.Type != "None" {
+						// something aside from CPU and MemoryMB is changed
+						onlyCPUAndMemoryChanged = false
+					}
+					if resourceEdit.Name == "CPU" {
+						cpuChanged = true
+					}
+					if resourceEdit.Name == "MemoryMB" {
+						memoryChanged = true
+					}
+				}
+
+				if !onlyCPUAndMemoryChanged {
+					return true
+				}
+
+				if cpuChanged && !hasTaskScaling(taskGrp.Name, task.Name, "vertical_cpu") {
+					return true
+				}
+				if memoryChanged && !hasTaskScaling(taskGrp.Name, task.Name, "vertical_mem") {
+					return true
+				}
 			}
 		}
 	}
@@ -284,7 +368,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 		c.logger.LogTrace(ctx, "DeploymentStatus:%s %v", *job.ID, deploymentStatus)
 	}
 
-	if !hasUpdate(resp, restart, src.Force) {
+	if !hasUpdate(ctx, c.logger, job, resp, restart, src.Force) {
 		c.logger.LogTrace(ctx, "Job is already up to date.")
 
 		return &application.UpdateJobInfo{
