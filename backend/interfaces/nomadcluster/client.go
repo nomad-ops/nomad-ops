@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -136,50 +137,230 @@ func (c *Client) SubscribeJobChanges(ctx context.Context, cb func(jobName string
 	return nil
 }
 
+func hasGroupScaling(job *api.Job, taskGroupName string) bool {
+	for _, taskGroup := range job.TaskGroups {
+		if *taskGroup.Name != taskGroupName {
+			continue
+		}
+		if taskGroup.Scaling != nil && taskGroup.Scaling.Enabled != nil && *taskGroup.Scaling.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTaskScaling(job *api.Job, taskGroupName, taskName, resourceName string) bool {
+	for _, taskGroup := range job.TaskGroups {
+		if *taskGroup.Name != taskGroupName {
+			continue
+		}
+		for _, task := range taskGroup.Tasks {
+			if task.Name != taskName {
+				continue
+			}
+			for _, res := range task.ScalingPolicies {
+				if res.Type != resourceName {
+					continue
+				}
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func copyExistingAutoScalerChanges(ctx context.Context,
+	logger log.Logger,
+	job *api.Job,
+	diffResp *api.JobPlanResponse) {
+	// iterate TasksGroups for enabled horizontal scaling or vertical scaling
+	for _, taskGroup := range job.TaskGroups {
+
+		for _, task := range taskGroup.Tasks {
+			if hasTaskScaling(job, *taskGroup.Name, task.Name, "vertical_cpu") {
+				// we found a Task with existing Scaling Policy
+				// Let's find respective diff that contains the autoscaled cpu-value (if any)
+				for _, diffTaskGroup := range diffResp.Diff.TaskGroups {
+					if diffTaskGroup.Name != *taskGroup.Name {
+						continue
+					}
+
+					for _, taskDiff := range diffTaskGroup.Tasks {
+						if taskDiff.Name != task.Name {
+							continue
+						}
+
+						for _, diffObj := range taskDiff.Objects {
+							if diffObj.Name != "Resources" {
+								continue
+							}
+
+							for _, resourceDiff := range diffObj.Fields {
+								if resourceDiff.Name != "CPU" {
+									continue
+								}
+								if resourceDiff.Type != "Edited" {
+									continue
+								}
+
+								cpuValue, err := strconv.Atoi(resourceDiff.Old)
+								if err != nil {
+									logger.LogError(ctx, "could not parse old CPU value:%v", err)
+								} else {
+									task.Resources.CPU = &cpuValue
+								}
+							}
+						}
+					}
+				}
+			}
+			if hasTaskScaling(job, *taskGroup.Name, task.Name, "vertical_mem") {
+				// we found a Task with existing Scaling Policy
+				// Let's find respective diff that contains the autoscaled mem-value (if any)
+				for _, diffTaskGroup := range diffResp.Diff.TaskGroups {
+					if diffTaskGroup.Name != *taskGroup.Name {
+						continue
+					}
+
+					for _, taskDiff := range diffTaskGroup.Tasks {
+						if taskDiff.Name != task.Name {
+							continue
+						}
+
+						for _, diffObj := range taskDiff.Objects {
+							if diffObj.Name != "Resources" {
+								continue
+							}
+
+							for _, resourceDiff := range diffObj.Fields {
+								if resourceDiff.Name != "Memory" {
+									continue
+								}
+								if resourceDiff.Type != "Edited" {
+									continue
+								}
+
+								memValue, err := strconv.Atoi(resourceDiff.Old)
+								if err != nil {
+									logger.LogError(ctx, "could not parse old Memory value:%v", err)
+								} else {
+									task.Resources.MemoryMB = &memValue
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if !hasGroupScaling(job, *taskGroup.Name) {
+			continue
+		}
+
+		// we found a TaskGroup with existing Scaling Policy
+		// Let's find respective diff that contains the autoscaled count-value
+		for _, diffTaskGroup := range diffResp.Diff.TaskGroups {
+			if diffTaskGroup.Name != *taskGroup.Name {
+				continue
+			}
+			// found a change in the same TaskGroup
+			// let's check if the count has been changed
+			for _, diffField := range diffTaskGroup.Fields {
+				if diffField.Name != "Count" {
+					continue
+				}
+				// count changed, let's set the old value on the job object to keep it
+				currentCount, err := strconv.Atoi(diffField.Old)
+				if err != nil {
+					logger.LogError(ctx, "could not parse old count value:%v", err)
+				} else {
+					taskGroup.Count = &currentCount
+				}
+			}
+		}
+	}
+}
+
 func hasUpdate(ctx context.Context,
 	logger log.Logger,
 	job *application.JobInfo,
 	diffResp *api.JobPlanResponse,
 	restart,
 	force bool) bool {
+
 	logger.LogTrace(ctx, "hasUpdate() - Job:%v", log.ToJSONString(job))
 
-	hasGroupScaling := func(taskGroupName string) bool {
-		for _, taskGroup := range job.Job.TaskGroups {
-			if *taskGroup.Name != taskGroupName {
-				continue
-			}
-			if taskGroup.Scaling != nil && taskGroup.Scaling.Enabled != nil && *taskGroup.Scaling.Enabled {
-				return true
-			}
-		}
-		return false
-	}
-
-	hasTaskScaling := func(taskGroupName, taskName, resourceName string) bool {
-		for _, taskGroup := range job.Job.TaskGroups {
-			if *taskGroup.Name != taskGroupName {
-				continue
-			}
-			for _, task := range taskGroup.Tasks {
-				if task.Name != taskName {
-					continue
-				}
-				for _, res := range task.ScalingPolicies {
-					if res.Type != resourceName {
-						continue
-					}
-					return true
-				}
-			}
-		}
-		return false
-	}
-
-	hasDiff := false
 	if len(diffResp.Diff.Objects) > 0 {
+		// some top level objects are changed
 		return true
 	}
+
+	// something else changed, let's take a look at the TaskGroups first
+	changesOnlyContainAutoScaler := true
+	hasChanges := false
+	for _, taskGrp := range diffResp.Diff.TaskGroups {
+		if len(taskGrp.Fields) > 0 {
+			hasChanges = true
+			// Check if only count is changed && scaling is enabled
+			if len(taskGrp.Fields) > 1 ||
+				taskGrp.Fields[0].Name != "Count" ||
+				!hasGroupScaling(job.Job, taskGrp.Name) {
+				changesOnlyContainAutoScaler = false
+			}
+		}
+		if len(taskGrp.Objects) > 0 {
+			if len(taskGrp.Objects) > 1 {
+				changesOnlyContainAutoScaler = false
+				hasChanges = true
+			}
+			if taskGrp.Objects[0].Name != "Scaling" {
+				changesOnlyContainAutoScaler = false
+				hasChanges = true
+			}
+
+			if len(taskGrp.Objects[0].Fields) > 0 || len(taskGrp.Objects[0].Objects) > 0 {
+				hasChanges = true
+				changesOnlyContainAutoScaler = false
+			}
+		}
+
+		for _, task := range taskGrp.Tasks {
+			if len(task.Fields) > 0 {
+				hasChanges = true
+				changesOnlyContainAutoScaler = false
+			}
+			if len(task.Objects) > 0 {
+				hasChanges = true
+				if len(task.Objects) > 1 {
+					changesOnlyContainAutoScaler = false
+				}
+				if task.Objects[0].Name != "Resources" {
+					changesOnlyContainAutoScaler = false
+				} else {
+					// check if only CPU and Memory are changed
+					onlyCPUAndMemoryChanged := true
+					for _, resourceEdit := range task.Objects[0].Fields {
+						if resourceEdit.Name != "CPU" && resourceEdit.Name != "MemoryMB" && resourceEdit.Type != "None" {
+							// something aside from CPU and MemoryMB is changed
+							onlyCPUAndMemoryChanged = false
+							break
+						}
+					}
+					if !onlyCPUAndMemoryChanged {
+						changesOnlyContainAutoScaler = false
+					}
+				}
+				if !hasTaskScaling(job.Job,
+					taskGrp.Name, task.Name, "vertical_cpu") &&
+					!hasTaskScaling(job.Job,
+						taskGrp.Name, task.Name, "vertical_mem") {
+					// no scaling for this task, update it
+					changesOnlyContainAutoScaler = false
+				}
+			}
+		}
+	}
+
 	fieldDiff := diffResp.Diff.Fields
 	if len(fieldDiff) > 0 {
 		// if only the git commit change we will not see it as a change
@@ -189,72 +370,30 @@ func hasUpdate(ctx context.Context,
 			(fieldDiff[0].Name != fmt.Sprintf("Meta[%s]", metaKeySrcCommit) &&
 				fieldDiff[0].Name != fmt.Sprintf("Meta[%s]", metaKeyForceRestart)) ||
 			force || restart {
-			return true
+			hasChanges = true
 		}
 	}
-	for _, taskGrp := range diffResp.Diff.TaskGroups {
-		if len(taskGrp.Fields) > 0 {
-			// Check if only count is changed && scaling is enabled
-			if len(taskGrp.Fields) > 1 || taskGrp.Fields[0].Name != "Count" || !hasGroupScaling(taskGrp.Name) {
-				return true
-			}
-		}
-		if len(taskGrp.Objects) > 0 {
-			// Check if only Scaling is changed
-			// Check if scaling options are changed
-			if len(taskGrp.Objects) > 1 || taskGrp.Objects[0].Name != "Scaling" || len(taskGrp.Objects[0].Fields) > 0 {
-				return true
-			}
-		}
 
-		for _, task := range taskGrp.Tasks {
-			if len(task.Fields) > 0 {
-				return true
-			}
-			if len(task.Objects) > 0 {
-				if len(task.Objects) > 1 {
-					return true
-				}
-				if task.Objects[0].Name != "Resources" {
-					return true
-				}
-				if !hasTaskScaling(taskGrp.Name, task.Name, "vertical_cpu") &&
-					!hasTaskScaling(taskGrp.Name, task.Name, "vertical_mem") {
-					// no scaling for this task, update it
-					return true
-				}
-
-				onlyCPUAndMemoryChanged := true
-				cpuChanged := false
-				memoryChanged := false
-
-				for _, resourceEdit := range task.Objects[0].Fields {
-					if resourceEdit.Name != "CPU" && resourceEdit.Name != "MemoryMB" && resourceEdit.Type != "None" {
-						// something aside from CPU and MemoryMB is changed
-						onlyCPUAndMemoryChanged = false
-					}
-					if resourceEdit.Name == "CPU" {
-						cpuChanged = true
-					}
-					if resourceEdit.Name == "MemoryMB" {
-						memoryChanged = true
-					}
-				}
-
-				if !onlyCPUAndMemoryChanged {
-					return true
-				}
-
-				if cpuChanged && !hasTaskScaling(taskGrp.Name, task.Name, "vertical_cpu") {
-					return true
-				}
-				if memoryChanged && !hasTaskScaling(taskGrp.Name, task.Name, "vertical_mem") {
-					return true
-				}
-			}
-		}
+	if !hasChanges {
+		// no changes found
+		return false
 	}
-	return hasDiff
+
+	if restart {
+		return true
+	}
+
+	if force {
+		// force update
+		return true
+	}
+
+	if changesOnlyContainAutoScaler {
+		// only autoscaler changes found, ignore
+		return false
+	}
+
+	return true
 }
 
 func (c *Client) ParseJob(ctx context.Context, j string) (*application.JobInfo, error) {
@@ -353,6 +492,9 @@ func (c *Client) UpdateJob(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+
+	// copy any existing autoscaler changes from the live job to the planned job
+	copyExistingAutoScalerChanges(ctx, c.logger, job.Job, resp)
 
 	deploymentStatus := ""
 
