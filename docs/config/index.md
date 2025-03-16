@@ -179,13 +179,58 @@ This document describes all the available environment variable settings used in 
     - Description: The Microsoft team name property.
     - Default: `""`
     - Example: `TEAM_NAME_MICROSOFT_PROPERTY=team-name`
-
+  
 ## Nomad Settings
 
+- **NOMAD_ADDR**
+    - Description: The address of the Nomad server.
+    - Default: `http://127.0.0.1:4646`
+    - Example: `NOMAD_ADDR=https://nomad.example.com:4646`
+
+- **NOMAD_HTTP_AUTH**
+    - Description: HTTP Basic Authentication credentials for Nomad (format: "username:password" or just "username").
+    - Default: `""`
+    - Example: `NOMAD_HTTP_AUTH=user:pass`
+
+- **NOMAD_TOKEN**
+    - Description: The SecretID token for Nomad ACL authentication.
+    - Default: `""`
+    - Example: `NOMAD_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+
 - **NOMAD_TOKEN_FILE**
-    - Description: The file path for the Nomad token.
+    - Description: The file path for the Nomad token. Will override `NOMAD_TOKEN` if set.
     - Default: `""`
     - Example: `NOMAD_TOKEN_FILE=/path/to/token`
+
+- **NOMAD_CACERT**
+    - Description: Path to a CA certificate file for Nomad TLS.
+    - Default: `""`
+    - Example: `NOMAD_CACERT=/path/to/ca.pem`
+
+- **NOMAD_CAPATH**
+    - Description: Path to a directory of CA certificates for Nomad TLS.
+    - Default: `""`
+    - Example: `NOMAD_CAPATH=/path/to/certs/`
+
+- **NOMAD_CLIENT_CERT**
+    - Description: Path to a client certificate file for Nomad TLS.
+    - Default: `""`
+    - Example: `NOMAD_CLIENT_CERT=/path/to/client.pem`
+
+- **NOMAD_CLIENT_KEY**
+    - Description: Path to a client key file for Nomad TLS.
+    - Default: `""`
+    - Example: `NOMAD_CLIENT_KEY=/path/to/client-key.pem`
+
+- **NOMAD_TLS_SERVER_NAME**
+    - Description: The server name to use as the SNI host for TLS connections.
+    - Default: `""`
+    - Example: `NOMAD_TLS_SERVER_NAME=server.nomad.example.com`
+
+- **NOMAD_SKIP_VERIFY**
+    - Description: Skip TLS certificate verification for Nomad connections.
+    - Default: `FALSE`
+    - Example: `NOMAD_SKIP_VERIFY=TRUE`
 
 - **NOMAD_OPS_LOCAL_REPO_DIR**
     - Description: The local repository directory for Nomad Ops.
