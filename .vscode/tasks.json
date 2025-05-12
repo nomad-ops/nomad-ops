@@ -1,6 +1,13 @@
 {
   "version": "2.0.0",
   "cwd": "${workspaceFolder}",
+  "inputs": [
+    {
+      "id": "nomad_token",
+      "type": "promptString",
+      "description": "Nomad token"
+    }
+  ],  
   "tasks": [
     {
       "label": "build client",
@@ -29,8 +36,7 @@
       "group": "build",
       "type": "shell",
       "options": {
-        "env": {
-        }
+        "env": {}
       }
     },
     {
@@ -43,10 +49,89 @@
       "group": "build",
       "type": "shell",
       "options": {
-        "env": {
-        },
+        "env": {},
         "cwd": "${workspaceFolder}/frontend"
       }
+    },
+    {
+      "label": "run nomad agent",
+      "command": "nomad",
+      "args": [
+        "agent",
+        "-dev",
+        "-bind",
+        "0.0.0.0",
+        "-log-level",
+        "INFO",
+        "-config",
+        "${workspaceFolder}/.deployment/nomad/agent.hcl"
+      ],
+      "group": "build",
+      "type": "shell",
+    },
+    {
+      "label": "bootstrap acl",
+      "command": "nomad",
+      "args": [
+        "acl",
+        "bootstrap"
+      ],
+      "group": "build",
+      "type": "shell",
+    },
+    {
+      "label": "apply anonymous policy",
+      "command": "nomad",
+      "args": [
+        "acl",
+        "policy",
+        "apply",
+        "-description",
+        "anonymous",
+        "anonymous",
+        "${workspaceFolder}/.deployment/nomad/anonymous.policy.hcl"
+      ],
+      "group": "build",
+      "type": "shell",
+      "options": {
+        "env": {
+          "NOMAD_TOKEN": "${input:nomad_token}"
+        }
+      }
+    },
+    {
+      "label": "create test-namespace",
+      "command": "nomad",
+      "args": [
+        "namespace",
+        "apply",
+        "nomad-ops-test"
+      ],
+      "group": "build",
+      "type": "shell",
+      "options": {
+        "env": {
+          "NOMAD_TOKEN": "${input:nomad_token}"
+        }
+      }
+    },
+    {
+      "label": "prepare nomad",
+      "dependsOn": [
+        "run nomad agent",
+        "create test-namespace" 
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "run dev",
+      "dependsOn": [
+        "prepare nomad",
+        "run server",
+        "run client",
+      ],
+      "problemMatcher": []
     }
   ]
 }

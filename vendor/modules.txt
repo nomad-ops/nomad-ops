@@ -521,7 +521,7 @@ gocloud.dev/internal/gcerr
 gocloud.dev/internal/oc
 gocloud.dev/internal/openurl
 gocloud.dev/internal/retry
-# golang.org/x/crypto v0.36.0
+# golang.org/x/crypto v0.38.0
 ## explicit; go 1.23.0
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -549,7 +549,7 @@ golang.org/x/image/tiff/lzw
 # golang.org/x/mod v0.21.0
 ## explicit; go 1.22.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.36.0
+# golang.org/x/net v0.40.0
 ## explicit; go 1.23.0
 golang.org/x/net/context
 golang.org/x/net/html
@@ -577,22 +577,22 @@ golang.org/x/oauth2/spotify
 golang.org/x/oauth2/twitch
 golang.org/x/oauth2/vk
 golang.org/x/oauth2/yandex
-# golang.org/x/sync v0.12.0
+# golang.org/x/sync v0.14.0
 ## explicit; go 1.23.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.31.0
+# golang.org/x/sys v0.33.0
 ## explicit; go 1.23.0
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.30.0
+# golang.org/x/term v0.32.0
 ## explicit; go 1.23.0
 golang.org/x/term
-# golang.org/x/text v0.23.0
+# golang.org/x/text v0.25.0
 ## explicit; go 1.23.0
 golang.org/x/text/cases
 golang.org/x/text/internal

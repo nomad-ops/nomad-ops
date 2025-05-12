@@ -52,8 +52,6 @@ By default the following user is created:
 
 Nomad Ops can be installed inside or outside of your nomad-cluster.
 
-> If you install Nomad Ops inside your cluster you can leverage the [Workload Identities](https://developer.hashicorp.com/nomad/docs/concepts/workload-identity) of Nomad v1.5.x.
-
 Keep in mind that Nomad Ops stores its data on the local file system. Please use a NFS-mount or similar to enable scheduling around the cluster.
 
 > There are performace implications if using a network mount.    

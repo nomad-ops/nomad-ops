@@ -467,6 +467,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 			},
 		}, c.getWriteOptions(ctx, src, job))
 		if err != nil {
+			c.logger.LogError(ctx, "could not create namespace %s: %v", writeOptions.Namespace, err)
 			return nil, err
 		}
 	}
@@ -490,6 +491,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 	resp, _, err := c.client.Jobs().Plan(job.Job, true, c.getWriteOptions(ctx, src, job))
 
 	if err != nil {
+		c.logger.LogError(ctx, "could not plan job %s: %v", *job.Job.Name, err)
 		return nil, err
 	}
 
@@ -502,6 +504,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 	if err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "not found") {
 			// low effort "not found" detection
+			c.logger.LogError(ctx, "could not get latest deployment for job %s: %v", *job.ID, err)
 			return nil, err
 		}
 	}
@@ -525,6 +528,7 @@ func (c *Client) UpdateJob(ctx context.Context,
 	if !src.Paused {
 		regResp, _, err := c.client.Jobs().Register(job.Job, c.getWriteOptions(ctx, src, job))
 		if err != nil {
+			c.logger.LogError(ctx, "could not register job %s: %v", *job.Job.Name, err)
 			return nil, err
 		}
 

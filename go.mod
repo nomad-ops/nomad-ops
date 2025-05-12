@@ -15,7 +15,7 @@ require (
 	github.com/pocketbase/pocketbase v0.22.27
 	github.com/prometheus/client_golang v1.14.0
 	github.com/whilp/git-urls v1.0.0
-	golang.org/x/crypto v0.36.0
+	golang.org/x/crypto v0.38.0
 )
 
 require (
@@ -100,12 +100,12 @@ require (
 	gocloud.dev v0.39.0 // indirect
 	golang.org/x/image v0.19.0 // indirect
 	golang.org/x/mod v0.21.0 // indirect
-	golang.org/x/net v0.36.0 // indirect
+	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/term v0.30.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/sync v0.14.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect

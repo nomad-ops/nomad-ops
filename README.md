@@ -55,14 +55,9 @@ By default the following user is created:
 
 ### Workload Identity 
 
-```
-nomad acl policy apply \
-   -namespace nomad-ops -job nomad-ops -group nomad-ops-group -task operator \
-   nomad-ops-policy .deployment/nomad/acl.hcl
-```
+Workload identity is NOT supported.
 
-> Requires nomad >= v1.5.x to use [Workload Identity](https://developer.hashicorp.com/nomad/docs/concepts/workload-identity)  
-> Before that you need to supply a NOMAD_TOKEN yourself
+Some APIs of nomad do not support the JWT token authentication. Until this is fixed you have to use the `NOMAD_TOKEN` environment variable to authenticate with the nomad api. 
 
 ## Thanks
 
